@@ -1,0 +1,16 @@
+## State Context
+
+A structured state block is injected at the start of this prompt inside <state> tags.
+It contains a JSON object. Read it as authoritative context.
+
+Rules:
+- If a section is absent from `sections`, treat it as unknown — never assume a default.
+- Reference values by their exact path. Examples:
+    - Current gold:   sections.resources.data.gold
+    - Rations left:   sections.resources.data.rations
+    - Combat active:  sections.combat.data.inProgress
+- Do not invent values that are not present in the state block.
+- The `activeModules` array tells you which sections are currently tracked.
+
+When writing narration that involves resources, always reflect the values in the state block.
+If gold is 42, the character has 42 gold — do not contradict this.
