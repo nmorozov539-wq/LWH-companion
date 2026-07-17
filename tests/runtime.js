@@ -1,11 +1,9 @@
-// tests/runtime.js
-
 import { Runtime } from "../extension/core/index.js";
-import resourcesManifest from "../extension/modules/resources/module.json" with { type: "json" };
+import { manifest as resourcesManifest } from "../extension/modules/resources/module.js";
 import resourcesFactory from "../extension/modules/resources/index.js";
-import combatManifest from "../extension/modules/combat/module.json" with { type: "json" };
+import { manifest as combatManifest } from "../extension/modules/combat/module.js";
 import combatFactory from "../extension/modules/combat/index.js";
-import weatherManifest from "../extension/modules/weather/module.json" with { type: "json" };
+import { manifest as weatherManifest } from "../extension/modules/weather/module.js";
 import weatherFactory from "../extension/modules/weather/index.js";
 
 const runtime = new Runtime();
@@ -30,7 +28,7 @@ console.log(runtime.state.getReadGraph());
 
 const gold = runtime.queryState("test", "resources").gold;
 if (gold === 42) {
-  console.log("\n✅ PASS: Runtime boots correctly as ES module");
+  console.log("\n✅ PASS: Runtime boots correctly with JS manifests");
 } else {
   console.log("\n❌ FAIL: something went wrong");
 }

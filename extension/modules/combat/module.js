@@ -1,0 +1,6 @@
+export const manifest = {
+  id: "combat",
+  version: "1.0.0",
+  reads: ["resources"],
+  provides: ["combat"]
+};
