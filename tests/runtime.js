@@ -1,20 +1,15 @@
 // tests/runtime.js
-//
-// Boots the Runtime through the real entry point and checks that
-// everything still works the same way as the individual tests.
 
-const { Runtime } = require("../extension/core/index");
-
-const resourcesManifest = require("../extension/modules/resources/module.json");
-const resourcesFactory = require("../extension/modules/resources/index.js");
-const combatManifest = require("../extension/modules/combat/module.json");
-const combatFactory = require("../extension/modules/combat/index.js");
-const weatherManifest = require("../extension/modules/weather/module.json");
-const weatherFactory = require("../extension/modules/weather/index.js");
+import { Runtime } from "../extension/core/index.js";
+import resourcesManifest from "../extension/modules/resources/module.json" with { type: "json" };
+import resourcesFactory from "../extension/modules/resources/index.js";
+import combatManifest from "../extension/modules/combat/module.json" with { type: "json" };
+import combatFactory from "../extension/modules/combat/index.js";
+import weatherManifest from "../extension/modules/weather/module.json" with { type: "json" };
+import weatherFactory from "../extension/modules/weather/index.js";
 
 const runtime = new Runtime();
 
-// Listen for RuntimeStarted before booting
 runtime.events.on("RuntimeStarted", "test", (payload) => {
   console.log("\n[RuntimeStarted event received]");
   console.log("  Loaded: ", payload.loadedIds);
@@ -35,7 +30,7 @@ console.log(runtime.state.getReadGraph());
 
 const gold = runtime.queryState("test", "resources").gold;
 if (gold === 42) {
-  console.log("\n✅ PASS: Runtime boots and queryState works through entry point");
+  console.log("\n✅ PASS: Runtime boots correctly as ES module");
 } else {
   console.log("\n❌ FAIL: something went wrong");
 }

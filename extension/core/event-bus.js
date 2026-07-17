@@ -1,24 +1,16 @@
 // extension/core/event-bus.js
-//
-// Synchronous event dispatch with explicit numeric priority (lower runs
-// first). If a listener throws, it's caught and logged — dispatch continues
-// to the remaining listeners rather than crashing the Runtime.
 
-class EventBus {
+export class EventBus {
   constructor() {
-    this._listeners = new Map(); // eventName -> [{ moduleId, priority, handler }]
+    this._listeners = new Map();
   }
 
-  // priority: lower number = runs earlier. Default 100.
   on(eventName, moduleId, handler, priority = 100) {
     if (!this._listeners.has(eventName)) {
       this._listeners.set(eventName, []);
     }
     this._listeners.get(eventName).push({ moduleId, priority, handler });
-    // Keep listeners sorted by priority every time one is added.
-    this._listeners
-      .get(eventName)
-      .sort((a, b) => a.priority - b.priority);
+    this._listeners.get(eventName).sort((a, b) => a.priority - b.priority);
   }
 
   emit(eventName, payload) {
@@ -35,5 +27,3 @@ class EventBus {
     }
   }
 }
-
-module.exports = { EventBus };
