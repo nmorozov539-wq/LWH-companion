@@ -16,3 +16,7 @@ runtime.boot([
   { manifest: combatManifest, factory: combatFactory },
   { manifest: weatherManifest, factory: weatherFactory },
 ]);
+
+// Visible confirmation that the extension loaded and JS is running.
+// toastr is ST's built-in notification system, available globally.
+toastr.success("Runtime booted successfully", "LWH Companion");
