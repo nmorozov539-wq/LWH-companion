@@ -13,20 +13,29 @@ import combatFactory from "./modules/combat/index.js";
 import { manifest as weatherManifest } from "./modules/weather/module.js";
 import weatherFactory from "./modules/weather/index.js";
 
-export const runtime = new Runtime();
+try {
+  alert("LWH: imports OK");
 
-runtime.boot([
-  { manifest: resourcesManifest, factory: resourcesFactory },
-  { manifest: combatManifest, factory: combatFactory },
-  { manifest: weatherManifest, factory: weatherFactory },
-]);
+  const runtime = new Runtime();
+  alert("LWH: Runtime created");
 
-const promptManager = new PromptManager(runtime, {
-  eventSource,
-  event_types,
-  setExtensionPrompt,
-  extension_prompt_types,
-});
-promptManager.init();
+  runtime.boot([
+    { manifest: resourcesManifest, factory: resourcesFactory },
+    { manifest: combatManifest, factory: combatFactory },
+    { manifest: weatherManifest, factory: weatherFactory },
+  ]);
+  alert("LWH: boot OK");
 
-toastr.success("Runtime booted successfully", "LWH Companion");
+  const promptManager = new PromptManager(runtime, {
+    eventSource,
+    event_types,
+    setExtensionPrompt,
+    extension_prompt_types,
+  });
+  promptManager.init();
+  alert("LWH: prompt manager OK");
+
+  toastr.success("Runtime booted successfully", "LWH Companion");
+} catch (err) {
+  alert("LWH ERROR: " + err.message);
+}
