@@ -1,9 +1,7 @@
 // extension/index.js
-// SillyTavern extension entry point.
-// Only this file needs to know ST's internal paths.
 
-import { eventSource, event_types } from "../../../script.js";
-import { setExtensionPrompt, extension_prompt_types } from "../../../scripts/extensions.js";
+import { eventSource, event_types } from "../../../../script.js";
+import { setExtensionPrompt, extension_prompt_types } from "../../../../scripts/extensions.js";
 
 import { Runtime } from "./core/index.js";
 import { PromptManager } from "./core/prompt-manager.js";
