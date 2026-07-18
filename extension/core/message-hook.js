@@ -20,11 +20,51 @@ export class MessageHook {
   }
 
   init() {
-    const { eventSource, event_types } = SillyTavern.getContext();
+    const { eventSource, event_types, SlashCommandParser, SlashCommand } =
+      SillyTavern.getContext();
 
     eventSource.on(event_types.MESSAGE_RECEIVED, (messageIndex) => {
       this._handleMessage(messageIndex);
     });
+
+    // DEBUG TOOL: simulates an AI message containing a delta block,
+    // without needing the real LLM to actually emit one yet. Finds the
+    // most recent AI message, appends a test delta to it, and runs it
+    // through the exact same handling path as a real message.
+    SlashCommandParser.addCommandObject(
+      SlashCommand.fromProps({
+        name: "lwhtestdelta",
+        callback: async () => {
+          const { chat } = SillyTavern.getContext();
+
+          let idx = -1;
+          for (let i = chat.length - 1; i >= 0; i--) {
+            if (!chat[i].is_user && !chat[i].is_system) {
+              idx = i;
+              break;
+            }
+          }
+
+          if (idx === -1) {
+            alert("No AI message found. Send a message and get a reply first, then try again.");
+            return "";
+          }
+
+          chat[idx].mes +=
+            ' <lwh_delta>{"resources":{"gold":-5},"combat":{"inProgress":true}}</lwh_delta>';
+
+          await this._handleMessage(idx);
+
+          alert(
+            "Test delta injected into message " +
+              idx +
+              ". Run /lwhinject to confirm gold dropped to 37 and combat.inProgress is true."
+          );
+          return "";
+        },
+        helpString: "DEBUG: simulate an AI-authored delta on the last AI message.",
+      })
+    );
 
     console.log("[MessageHook] Initialized, listening for MESSAGE_RECEIVED.");
   }
@@ -33,21 +73,17 @@ export class MessageHook {
     const { chat, saveChat, updateMessageBlock } = SillyTavern.getContext();
     const msg = chat[messageIndex];
 
-    // Only process AI messages — never the user's own or system messages.
     if (!msg || msg.is_user || msg.is_system) return;
 
     const { delta, cleanText } = extractDelta(msg.mes);
-    if (!delta) return; // nothing to do, leave the message untouched
+    if (!delta) return;
 
     applyDelta(this.runtime, delta);
 
-    // Strip the delta block from the stored message so future prompts
-    // built from chat history stay clean.
     msg.mes = cleanText;
     updateMessageBlock(messageIndex, msg);
     await saveChat();
 
-    // Reflect the change in the next prompt immediately.
     this.promptManager.refresh();
 
     console.log("[MessageHook] Applied delta from message", messageIndex, delta);
