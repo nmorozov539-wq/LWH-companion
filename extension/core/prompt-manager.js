@@ -1,10 +1,8 @@
 // extension/core/prompt-manager.js
 //
 // Injects the Runtime state contract into SillyTavern's prompt system.
-// Uses position 0 (IN_PROMPT) — merges into the system prompt directly,
-// which is reliably supported across chat-completion and text-completion
-// APIs. Position 1 (IN_CHAT) was tested and did not appear in the actual
-// outgoing prompt for chat-completion backends.
+// DEBUG MODE: shows a toastr every time injection runs, and registers
+// a /lwhinject slash command to trigger + inspect it manually.
 
 const INJECTION_KEY = "LWH_STATE";
 
@@ -14,7 +12,8 @@ export class PromptManager {
   }
 
   init() {
-    const { eventSource, event_types } = SillyTavern.getContext();
+    const { eventSource, event_types, SlashCommandParser, SlashCommand } =
+      SillyTavern.getContext();
 
     eventSource.on(event_types.APP_READY, () => {
       console.log("[PromptManager] APP_READY received, injecting for the first time.");
@@ -25,6 +24,23 @@ export class PromptManager {
       this._inject();
     });
 
+    // Manual debug command: type /lwhinject in any chat to force a
+    // re-injection and see exactly what was sent to setExtensionPrompt.
+    SlashCommandParser.addCommandObject(
+      SlashCommand.fromProps({
+        name: "lwhinject",
+        callback: () => {
+          this._inject();
+          alert(
+            "LWH manual inject:\n" +
+              JSON.stringify(this.runtime.getContract(), null, 2)
+          );
+          return "";
+        },
+        helpString: "Manually re-inject LWH Companion state and display it.",
+      })
+    );
+
     console.log("[PromptManager] Initialized, waiting for APP_READY.");
   }
 
@@ -33,8 +49,11 @@ export class PromptManager {
     const block = `<state>\n${JSON.stringify(contract, null, 2)}\n</state>`;
 
     // setExtensionPrompt(key, value, position, depth, scan, role)
-    // position 0 = IN_PROMPT (merged into system prompt directly)
     setExtensionPrompt(INJECTION_KEY, block, 0, 0, false, 0);
+
+    // Visible confirmation every time this actually runs.
+    const gold = contract.sections?.resources?.data?.gold;
+    toastr.info(`Injected state (gold=${gold})`, "LWH Companion", { timeOut: 2000 });
   }
 
   debug() {
