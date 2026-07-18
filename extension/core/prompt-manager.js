@@ -1,19 +1,30 @@
 // extension/core/prompt-manager.js
 //
 // Injects the Runtime state contract into SillyTavern's prompt system.
-// DEBUG MODE: shows a toastr every time injection runs, and registers
-// a /lwhinject slash command to trigger + inspect it manually.
+//
+// IMPORTANT: setExtensionPrompt is NOT a bare global on this ST version.
+// It must be pulled from SillyTavern.getContext(), same as eventSource.
+// (Confirmed via ST's own st-context.js source — getContext() explicitly
+// returns setExtensionPrompt as one of its properties.)
 
 const INJECTION_KEY = "LWH_STATE";
 
 export class PromptManager {
   constructor(runtime) {
     this.runtime = runtime;
+    this._setExtensionPrompt = null;
   }
 
   init() {
-    const { eventSource, event_types, SlashCommandParser, SlashCommand } =
-      SillyTavern.getContext();
+    const {
+      eventSource,
+      event_types,
+      SlashCommandParser,
+      SlashCommand,
+      setExtensionPrompt,
+    } = SillyTavern.getContext();
+
+    this._setExtensionPrompt = setExtensionPrompt;
 
     eventSource.on(event_types.APP_READY, () => {
       console.log("[PromptManager] APP_READY received, injecting for the first time.");
@@ -24,8 +35,6 @@ export class PromptManager {
       this._inject();
     });
 
-    // Manual debug command: type /lwhinject in any chat to force a
-    // re-injection and see exactly what was sent to setExtensionPrompt.
     SlashCommandParser.addCommandObject(
       SlashCommand.fromProps({
         name: "lwhinject",
@@ -49,9 +58,8 @@ export class PromptManager {
     const block = `<state>\n${JSON.stringify(contract, null, 2)}\n</state>`;
 
     // setExtensionPrompt(key, value, position, depth, scan, role)
-    setExtensionPrompt(INJECTION_KEY, block, 0, 0, false, 0);
+    this._setExtensionPrompt(INJECTION_KEY, block, 0, 0, false, 0);
 
-    // Visible confirmation every time this actually runs.
     const gold = contract.sections?.resources?.data?.gold;
     toastr.info(`Injected state (gold=${gold})`, "LWH Companion", { timeOut: 2000 });
   }
