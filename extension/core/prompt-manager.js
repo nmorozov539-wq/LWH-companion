@@ -1,13 +1,10 @@
 // extension/core/prompt-manager.js
 //
 // Injects the Runtime state contract into SillyTavern's prompt system.
-//
-// IMPORTANT TIMING NOTE: setExtensionPrompt is a global provided by ST's
-// core script.js, but it isn't available until ST finishes its own
-// startup. If we call it too early (e.g. immediately at extension load),
-// we get "setExtensionPrompt is not defined". So the first injection
-// waits for event_types.APP_READY. After that, injections happen before
-// every generation via GENERATE_BEFORE_COMBINE_PROMPTS.
+// Uses position 0 (IN_PROMPT) — merges into the system prompt directly,
+// which is reliably supported across chat-completion and text-completion
+// APIs. Position 1 (IN_CHAT) was tested and did not appear in the actual
+// outgoing prompt for chat-completion backends.
 
 const INJECTION_KEY = "LWH_STATE";
 
@@ -19,8 +16,6 @@ export class PromptManager {
   init() {
     const { eventSource, event_types } = SillyTavern.getContext();
 
-    // Safe to register listeners immediately — registering just means
-    // "call this later," it doesn't touch setExtensionPrompt yet.
     eventSource.on(event_types.APP_READY, () => {
       console.log("[PromptManager] APP_READY received, injecting for the first time.");
       this._inject();
@@ -38,7 +33,8 @@ export class PromptManager {
     const block = `<state>\n${JSON.stringify(contract, null, 2)}\n</state>`;
 
     // setExtensionPrompt(key, value, position, depth, scan, role)
-    setExtensionPrompt(INJECTION_KEY, block, 1, 0, false, 0);
+    // position 0 = IN_PROMPT (merged into system prompt directly)
+    setExtensionPrompt(INJECTION_KEY, block, 0, 0, false, 0);
   }
 
   debug() {
