@@ -1,0 +1,379 @@
+================================================================================
+Project Code Compilation
+Generated on: 2026-07-18 21:14:04
+Source Directory: /data/data/com.termux/files/home/LWH-companion/extension/core
+File Extensions Included: , .js, .jsx, .mjs, .ts, .tsx
+Total Files: 6
+================================================================================
+
+
+
+================================================================================
+FRONTEND & UI FILES
+(6 files)
+================================================================================
+
+File: /data/data/com.termux/files/home/LWH-companion/extension/core/delta-processor.js
+--------------------------------------------------------------------------------
+
+// extension/core/delta-processor.js
+//
+// Extracts an <lwh_delta>{...}</lwh_delta> block from AI-authored text
+// and applies it to the Runtime by routing each key to the matching
+// module's own applyDelta() method. Modules interpret their own delta
+// shape (numeric = add, boolean = overwrite, etc) — this file never
+// touches module state directly, matching the write-isolation rule.
+
+const DELTA_REGEX = /<lwh_delta>([\s\S]*?)<\/lwh_delta>/;
+
+// Pulls the delta out of raw text. Returns the parsed object (or null
+// if absent/malformed) and the text with the block stripped out, so
+// the raw JSON never has to be shown to the user.
+export function extractDelta(text) {
+  const match = text.match(DELTA_REGEX);
+  if (!match) {
+    return { delta: null, cleanText: text };
+  }
+
+  const cleanText = text.replace(DELTA_REGEX, "").trim();
+
+  let delta;
+  try {
+    delta = JSON.parse(match[1]);
+  } catch (err) {
+    console.error("[DeltaProcessor] Malformed delta JSON:", err.message);
+    return { delta: null, cleanText };
+  }
+
+  return { delta, cleanText };
+}
+
+// Routes each top-level key in the delta (e.g. "resources", "combat")
+// to that module's own applyDelta(). Missing modules or modules without
+// applyDelta are skipped gracefully, never thrown.
+export function applyDelta(runtime, delta) {
+  if (!delta) return;
+
+  for (const [moduleId, moduleDelta] of Object.entries(delta)) {
+    const instance = runtime.loader.loaded.get(moduleId);
+    if (!instance) {
+      console.warn(`[DeltaProcessor] No loaded module "${moduleId}", skipping.`);
+      continue;
+    }
+    if (typeof instance.applyDelta !== "function") {
+      console.warn(`[DeltaProcessor] Module "${moduleId}" has no applyDelta(), skipping.`);
+      continue;
+    }
+    instance.applyDelta(moduleDelta);
+  }
+}
+
+
+================================================================================
+File: /data/data/com.termux/files/home/LWH-companion/extension/core/event-bus.js
+--------------------------------------------------------------------------------
+
+// extension/core/event-bus.js
+
+export class EventBus {
+  constructor() {
+    this._listeners = new Map();
+  }
+
+  on(eventName, moduleId, handler, priority = 100) {
+    if (!this._listeners.has(eventName)) {
+      this._listeners.set(eventName, []);
+    }
+    this._listeners.get(eventName).push({ moduleId, priority, handler });
+    this._listeners.get(eventName).sort((a, b) => a.priority - b.priority);
+  }
+
+  emit(eventName, payload) {
+    const listeners = this._listeners.get(eventName) || [];
+    for (const { moduleId, handler } of listeners) {
+      try {
+        handler(payload);
+      } catch (err) {
+        console.error(
+          `[EventBus] "${moduleId}" threw handling "${eventName}":`,
+          err.message
+        );
+      }
+    }
+  }
+}
+
+
+================================================================================
+File: /data/data/com.termux/files/home/LWH-companion/extension/core/index.js
+--------------------------------------------------------------------------------
+
+// extension/core/index.js
+
+import { StateManager } from "./state-manager.js";
+import { EventBus } from "./event-bus.js";
+import { ModuleLoader } from "./module-loader.js";
+
+export class Runtime {
+  constructor() {
+    this.state = new StateManager();
+    this.events = new EventBus();
+    this.loader = new ModuleLoader(this.state, this.events);
+    this._booted = false;
+  }
+
+  boot(modules) {
+    if (this._booted) {
+      console.warn("[Runtime] Already booted. Ignoring second boot() call.");
+      return;
+    }
+    console.log("[Runtime] Booting...");
+    this.loader.loadAll(modules);
+    this._booted = true;
+
+    const loadedIds = [...this.loader.loaded.keys()];
+    const failedIds = [...this.loader.failed];
+    console.log(`[Runtime] Loaded:  ${loadedIds.join(", ") || "none"}`);
+    if (failedIds.length > 0) {
+      console.warn(`[Runtime] Failed:  ${failedIds.join(", ")}`);
+    }
+    this.events.emit("RuntimeStarted", { loadedIds, failedIds });
+  }
+
+  queryState(reader, target) {
+    return this.state.queryState(reader, target);
+  }
+
+  getContract() {
+    return this.state.toContract();
+  }
+
+  isBooted() {
+    return this._booted;
+  }
+}
+
+
+================================================================================
+File: /data/data/com.termux/files/home/LWH-companion/extension/core/module-loader.js
+--------------------------------------------------------------------------------
+
+// extension/core/module-loader.js
+
+export class ModuleLoader {
+  constructor(stateManager, eventBus) {
+    this.stateManager = stateManager;
+    this.eventBus = eventBus;
+    this.loaded = new Map();
+    this.failed = new Set();
+  }
+
+  loadAll(modules) {
+    const pending = [...modules];
+    let progress = true;
+
+    while (pending.length > 0 && progress) {
+      progress = false;
+      for (let i = pending.length - 1; i >= 0; i--) {
+        const { manifest, factory } = pending[i];
+        const hardDeps = manifest.reads || [];
+        const depsSatisfied = hardDeps.every((dep) => this.loaded.has(dep));
+        const depsFailed = hardDeps.some((dep) => this.failed.has(dep));
+
+        if (depsFailed) {
+          console.error(`[ModuleLoader] Skipping "${manifest.id}": missing hard dependency.`);
+          this.failed.add(manifest.id);
+          pending.splice(i, 1);
+          progress = true;
+          continue;
+        }
+
+        if (depsSatisfied) {
+          this._loadOne(manifest, factory);
+          pending.splice(i, 1);
+          progress = true;
+        }
+      }
+    }
+
+    for (const { manifest } of pending) {
+      console.error(`[ModuleLoader] Skipping "${manifest.id}": unresolved dependencies.`);
+      this.failed.add(manifest.id);
+    }
+  }
+
+  _loadOne(manifest, factory) {
+    try {
+      this.stateManager.registerNamespace(manifest.id);
+      const runtime = {
+        state: this.stateManager,
+        events: this.eventBus,
+        moduleId: manifest.id,
+      };
+      const instance = factory(runtime);
+      if (typeof instance.init === "function") {
+        instance.init();
+      }
+      this.loaded.set(manifest.id, instance);
+      console.log(`[ModuleLoader] Loaded "${manifest.id}"`);
+    } catch (err) {
+      console.error(`[ModuleLoader] "${manifest.id}" threw during load:`, err.message);
+      this.failed.add(manifest.id);
+    }
+  }
+}
+
+
+================================================================================
+File: /data/data/com.termux/files/home/LWH-companion/extension/core/prompt-manager.js
+--------------------------------------------------------------------------------
+
+// extension/core/prompt-manager.js
+//
+// Injects the Runtime state contract into SillyTavern's prompt system.
+//
+// setExtensionPrompt must come from SillyTavern.getContext() — it is not
+// a bare global on this ST version.
+//
+// Position 1 (IN_CHAT), depth 0 — confirmed working for chat-completion
+// backends. Position 0 (IN_PROMPT) was tested and did not appear in the
+// outgoing prompt for this setup.
+//
+// KNOWN LIMITATION: GENERATE_BEFORE_COMBINE_PROMPTS does not reliably
+// fire for chat-completion APIs (confirmed ST issue). Right now this
+// doesn't matter because nothing changes state after boot. Once modules
+// can update state mid-session, we'll need a different/additional event
+// to guarantee the injection refreshes before every generation.
+
+const INJECTION_KEY = "LWH_STATE";
+
+export class PromptManager {
+  constructor(runtime) {
+    this.runtime = runtime;
+    this._setExtensionPrompt = null;
+  }
+
+  init() {
+    const {
+      eventSource,
+      event_types,
+      SlashCommandParser,
+      SlashCommand,
+      setExtensionPrompt,
+    } = SillyTavern.getContext();
+
+    this._setExtensionPrompt = setExtensionPrompt;
+
+    eventSource.on(event_types.APP_READY, () => {
+      this._inject();
+    });
+
+    eventSource.on(event_types.GENERATE_BEFORE_COMBINE_PROMPTS, () => {
+      this._inject();
+    });
+
+    SlashCommandParser.addCommandObject(
+      SlashCommand.fromProps({
+        name: "lwhinject",
+        callback: () => {
+          this._inject();
+          alert(
+            "LWH manual inject:\n" +
+              JSON.stringify(this.runtime.getContract(), null, 2)
+          );
+          return "";
+        },
+        helpString: "Manually re-inject LWH Companion state and display it.",
+      })
+    );
+
+    console.log("[PromptManager] Initialized, waiting for APP_READY.");
+  }
+
+  _inject() {
+    const contract = this.runtime.getContract();
+    const block = `<state>\n${JSON.stringify(contract, null, 2)}\n</state>`;
+
+    // setExtensionPrompt(key, value, position, depth, scan, role)
+    this._setExtensionPrompt(INJECTION_KEY, block, 1, 0, false, 0);
+
+    console.log("[PromptManager] Injected state, gold=" + contract.sections?.resources?.data?.gold);
+  }
+
+  debug() {
+    console.log("[PromptManager] Current injection:");
+    console.log(JSON.stringify(this.runtime.getContract(), null, 2));
+  }
+}
+
+
+================================================================================
+File: /data/data/com.termux/files/home/LWH-companion/extension/core/state-manager.js
+--------------------------------------------------------------------------------
+
+// extension/core/state-manager.js
+
+export class StateManager {
+  constructor() {
+    this._state = { modules: {} };
+    this._readLog = [];
+  }
+
+  registerNamespace(moduleId) {
+    if (!this._state.modules[moduleId]) {
+      this._state.modules[moduleId] = {};
+    }
+  }
+
+  setState(moduleId, data) {
+    if (!this._state.modules[moduleId]) {
+      throw new Error(
+        `[StateManager] Cannot write to unregistered namespace "${moduleId}"`
+      );
+    }
+    this._state.modules[moduleId] = {
+      ...this._state.modules[moduleId],
+      ...data,
+    };
+  }
+
+  getOwnState(moduleId) {
+    return this._state.modules[moduleId];
+  }
+
+  queryState(reader, target) {
+    this._readLog.push({ reader, target, timestamp: Date.now() });
+    const data = this._state.modules[target];
+    if (data === undefined) return undefined;
+    return Object.freeze({ ...data });
+  }
+
+  getReadGraph() {
+    return this._readLog;
+  }
+
+  toContract(sectionVersions = {}) {
+    const sections = {};
+    for (const [moduleId, data] of Object.entries(this._state.modules)) {
+      sections[moduleId] = {
+        version: sectionVersions[moduleId] || 1,
+        data,
+      };
+    }
+    return {
+      contractVersion: 1,
+      sections,
+      activeModules: Object.keys(this._state.modules),
+    };
+  }
+}
+
+
+================================================================================
+
+
+================================================================================
+Compilation Summary:
+Total files processed: 6
+Files with read errors: 0
+================================================================================

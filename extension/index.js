@@ -3,6 +3,7 @@
 
 import { Runtime } from "./core/index.js";
 import { PromptManager } from "./core/prompt-manager.js";
+import { MessageHook } from "./core/message-hook.js";
 
 import { manifest as resourcesManifest } from "./modules/resources/module.js";
 import resourcesFactory from "./modules/resources/index.js";
@@ -24,6 +25,9 @@ try {
 
   const promptManager = new PromptManager(runtime);
   promptManager.init();
+
+  const messageHook = new MessageHook(runtime, promptManager);
+  messageHook.init();
 
   const { eventSource, event_types } = SillyTavern.getContext();
   eventSource.on(event_types.APP_READY, () => {

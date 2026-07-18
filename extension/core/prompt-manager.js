@@ -70,6 +70,12 @@ export class PromptManager {
     console.log("[PromptManager] Injected state, gold=" + contract.sections?.resources?.data?.gold);
   }
 
+  // Public entry point for other core pieces (e.g. MessageHook) to
+  // force a re-injection after state changes mid-session.
+  refresh() {
+    this._inject();
+  }
+
   debug() {
     console.log("[PromptManager] Current injection:");
     console.log(JSON.stringify(this.runtime.getContract(), null, 2));
