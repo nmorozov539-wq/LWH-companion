@@ -1,5 +1,9 @@
 // extension/index.js
 // SillyTavern extension entry point.
+// Only this file needs to know ST's internal paths.
+
+import { eventSource, event_types } from "../../../script.js";
+import { setExtensionPrompt, extension_prompt_types } from "../../../scripts/extensions.js";
 
 import { Runtime } from "./core/index.js";
 import { PromptManager } from "./core/prompt-manager.js";
@@ -11,7 +15,6 @@ import combatFactory from "./modules/combat/index.js";
 import { manifest as weatherManifest } from "./modules/weather/module.js";
 import weatherFactory from "./modules/weather/index.js";
 
-// Boot the Runtime.
 export const runtime = new Runtime();
 
 runtime.boot([
@@ -20,8 +23,12 @@ runtime.boot([
   { manifest: weatherManifest, factory: weatherFactory },
 ]);
 
-// Start injecting state into prompts.
-const promptManager = new PromptManager(runtime);
+const promptManager = new PromptManager(runtime, {
+  eventSource,
+  event_types,
+  setExtensionPrompt,
+  extension_prompt_types,
+});
 promptManager.init();
 
 toastr.success("Runtime booted successfully", "LWH Companion");
