@@ -25,7 +25,10 @@ try {
   const promptManager = new PromptManager(runtime);
   promptManager.init();
 
-  toastr.success("Runtime booted successfully", "LWH Companion");
+  const { eventSource, event_types } = SillyTavern.getContext();
+  eventSource.on(event_types.APP_READY, () => {
+    toastr.success("Runtime booted successfully", "LWH Companion");
+  });
 } catch (err) {
   console.error("[LWH Companion] Boot failed:", err);
   alert("LWH ERROR: " + err.message);
