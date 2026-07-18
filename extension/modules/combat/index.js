@@ -10,5 +10,19 @@ export default function (runtime) {
         lastKnownGold: startingGold,
       });
     },
+
+    // delta example: { inProgress: true }
+    // Booleans are absolute (this state either is or isn't true),
+    // unlike Resources' numeric fields which add.
+    applyDelta(delta) {
+      const current = runtime.state.getOwnState("combat");
+      const updated = { ...current };
+
+      if (typeof delta.inProgress === "boolean") {
+        updated.inProgress = delta.inProgress;
+      }
+
+      runtime.state.setState("combat", updated);
+    },
   };
 }
