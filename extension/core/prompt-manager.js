@@ -2,10 +2,10 @@
 //
 // Injects the Runtime state contract into SillyTavern's prompt system.
 //
-// IMPORTANT: setExtensionPrompt is NOT a bare global on this ST version.
-// It must be pulled from SillyTavern.getContext(), same as eventSource.
-// (Confirmed via ST's own st-context.js source — getContext() explicitly
-// returns setExtensionPrompt as one of its properties.)
+// Position 1 (IN_CHAT) — matches Extension-Summaryception's usage, which
+// is confirmed to work for chat-completion setups. Position 0 (IN_PROMPT)
+// was tested with a correctly-working setExtensionPrompt call and did not
+// appear in the outgoing chat-completion prompt.
 
 const INJECTION_KEY = "LWH_STATE";
 
@@ -27,7 +27,6 @@ export class PromptManager {
     this._setExtensionPrompt = setExtensionPrompt;
 
     eventSource.on(event_types.APP_READY, () => {
-      console.log("[PromptManager] APP_READY received, injecting for the first time.");
       this._inject();
     });
 
@@ -58,7 +57,8 @@ export class PromptManager {
     const block = `<state>\n${JSON.stringify(contract, null, 2)}\n</state>`;
 
     // setExtensionPrompt(key, value, position, depth, scan, role)
-    this._setExtensionPrompt(INJECTION_KEY, block, 0, 0, false, 0);
+    // position 1 = IN_CHAT, depth 0 = as close to latest message as possible
+    this._setExtensionPrompt(INJECTION_KEY, block, 1, 0, false, 0);
 
     const gold = contract.sections?.resources?.data?.gold;
     toastr.info(`Injected state (gold=${gold})`, "LWH Companion", { timeOut: 2000 });
