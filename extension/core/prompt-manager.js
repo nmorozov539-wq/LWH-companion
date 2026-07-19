@@ -10,10 +10,11 @@
 // outgoing prompt for this setup.
 //
 // KNOWN LIMITATION: GENERATE_BEFORE_COMBINE_PROMPTS does not reliably
-// fire for chat-completion APIs (confirmed ST issue). Right now this
-// doesn't matter because nothing changes state after boot. Once modules
-// can update state mid-session, we'll need a different/additional event
-// to guarantee the injection refreshes before every generation.
+// fire for chat-completion APIs (confirmed ST issue).
+//
+// CHAT_CHANGED: extension prompts appear to need re-setting after
+// switching chats — matches Extension-Summaryception's own pattern of
+// calling updateInjection() on chat change.
 
 const INJECTION_KEY = "LWH_STATE";
 
@@ -39,6 +40,10 @@ export class PromptManager {
     });
 
     eventSource.on(event_types.GENERATE_BEFORE_COMBINE_PROMPTS, () => {
+      this._inject();
+    });
+
+    eventSource.on(event_types.CHAT_CHANGED, () => {
       this._inject();
     });
 
@@ -70,8 +75,6 @@ export class PromptManager {
     console.log("[PromptManager] Injected state, gold=" + contract.sections?.resources?.data?.gold);
   }
 
-  // Public entry point for other core pieces (e.g. MessageHook) to
-  // force a re-injection after state changes mid-session.
   refresh() {
     this._inject();
   }
