@@ -2,7 +2,7 @@
 //
 // Proves extractDelta + applyDelta work correctly:
 // 1. Normal delta updates the right module via its own applyDelta()
-// 2. The <lwh_delta> block is stripped from visible text
+// 2. The <lwh-delta> block is stripped from visible text
 // 3. Malformed JSON doesn't crash, just gets skipped
 // 4. A delta targeting a module that doesn't exist doesn't crash
 
@@ -29,7 +29,7 @@ section("TEST 1: Normal delta (gold -5, combat starts)");
 
 const aiText =
   'She tosses you a small pouch. "That should cover it." ' +
-  '<lwh_delta>{"resources":{"gold":-5},"combat":{"inProgress":true}}</lwh_delta>';
+  '<lwh-delta>{"resources":{"gold":-5},"combat":{"inProgress":true}}</lwh-delta>';
 
 const { delta, cleanText } = extractDelta(aiText);
 applyDelta(runtime, delta);
@@ -41,7 +41,7 @@ console.log("Clean text:", cleanText);
 console.log("Gold after delta:", gold, "(expected 37)");
 console.log("Combat inProgress:", inProgress, "(expected true)");
 
-if (gold === 37 && inProgress === true && !cleanText.includes("lwh_delta")) {
+if (gold === 37 && inProgress === true && !cleanText.includes("lwh-delta")) {
   console.log("✅ PASS");
 } else {
   console.log("❌ FAIL");
@@ -50,13 +50,13 @@ if (gold === 37 && inProgress === true && !cleanText.includes("lwh_delta")) {
 // --- TEST 2: malformed JSON doesn't crash ---
 section("TEST 2: Malformed delta JSON");
 
-const badText = 'Something happens. <lwh_delta>{not valid json}</lwh_delta>';
+const badText = 'Something happens. <lwh-delta>{not valid json}</lwh-delta>';
 const result2 = extractDelta(badText);
 
 console.log("Delta (should be null):", result2.delta);
 console.log("Clean text still stripped:", result2.cleanText);
 
-if (result2.delta === null && !result2.cleanText.includes("lwh_delta")) {
+if (result2.delta === null && !result2.cleanText.includes("lwh-delta")) {
   console.log("✅ PASS");
 } else {
   console.log("❌ FAIL");
@@ -89,6 +89,30 @@ console.log("Delta:", result4.delta, "(expected null)");
 console.log("Clean text unchanged:", result4.cleanText === plainText);
 
 if (result4.delta === null && result4.cleanText === plainText) {
+  console.log("✅ PASS");
+} else {
+  console.log("❌ FAIL");
+}
+
+// --- TEST 5: truncated/dangling delta tag (cut off by token limit) ---
+section("TEST 5: Truncated delta tag");
+
+const truncatedText =
+  'Ten gold coins clatter onto the table. ' +
+  '<lwh-delta>{"resources":{"gold":10}}</lwh-';
+
+const result5 = extractDelta(truncatedText);
+
+console.log("Delta (should be null):", result5.delta);
+console.log("Clean text:", result5.cleanText);
+console.log("Truncated flag:", result5.truncated);
+
+if (
+  result5.delta === null &&
+  !result5.cleanText.includes("lwh-delta") &&
+  !result5.cleanText.includes("{") &&
+  result5.truncated === true
+) {
   console.log("✅ PASS");
 } else {
   console.log("❌ FAIL");
