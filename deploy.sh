@@ -1,9 +1,15 @@
 #!/bin/bash
-# Copies the extension folder to ST's extensions directory.
-# Run this after every git pull on the ST device.
+# Deploys extension files (extensions folder) and preset files (Downloads,
+# for ST's file-picker-based Preset import) to their ST-visible locations.
 
-DEST="/storage/emulated/0/Documents/default-user/extensions/LWH-companion"
+EXT_DEST="/storage/emulated/0/Documents/default-user/extensions/LWH-companion"
+DOWNLOAD_DEST="/storage/emulated/0/Download"
 
-mkdir -p "$DEST"
-cp -r ~/LWH-companion/extension/. "$DEST/"
-echo "✅ Deployed to $DEST"
+mkdir -p "$EXT_DEST"
+cp -r ~/LWH-companion/extension/. "$EXT_DEST/"
+echo "✅ Extension deployed to $EXT_DEST"
+
+mkdir -p "$DOWNLOAD_DEST"
+cp ~/LWH-companion/preset/*.json "$DOWNLOAD_DEST/" 2>/dev/null
+echo "✅ Preset JSON files copied to $DOWNLOAD_DEST"
+echo "   Import via SillyTavern: Chat Completion settings → Preset → Import"
