@@ -6,6 +6,11 @@ import { ModuleLoader } from "./module-loader.js";
 
 export class Runtime {
   constructor() {
+    // Random ID to detect if multiple Runtime instances accidentally
+    // exist at once (e.g. a stale extension load surviving a partial
+    // reload) — visible via /lwhinject and /lwhtestdelta output.
+    this._instanceId = Math.random().toString(36).slice(2, 8);
+
     this.state = new StateManager();
     this.events = new EventBus();
     this.loader = new ModuleLoader(this.state, this.events);
@@ -17,7 +22,7 @@ export class Runtime {
       console.warn("[Runtime] Already booted. Ignoring second boot() call.");
       return;
     }
-    console.log("[Runtime] Booting...");
+    console.log("[Runtime] Booting... instance " + this._instanceId);
     this.loader.loadAll(modules);
     this._booted = true;
 

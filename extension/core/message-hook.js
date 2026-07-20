@@ -1,15 +1,9 @@
 // extension/core/message-hook.js
 //
 // Listens for new AI messages via MESSAGE_RECEIVED. If the message
-// contains an <lwh_delta> block: applies it to the Runtime, strips it
-// from the stored message text (so it never pollutes future context
-// or shows to the user), refreshes the display, saves, and re-injects
-// updated state for the next prompt.
-//
-// KNOWN FOLLOW-UP: this doesn't yet account for swipes/regeneration —
-// if a message is swiped, its old delta was already applied and isn't
-// currently reversed. Fine for now since nothing depends on it yet;
-// worth revisiting once deltas actually matter for real play.
+// contains an <lwh-delta> block: applies it to the Runtime, strips it
+// from the stored message text, refreshes the display, saves, and
+// re-injects updated state for the next prompt.
 
 import { extractDelta, applyDelta } from "./delta-processor.js";
 
@@ -27,10 +21,6 @@ export class MessageHook {
       this._handleMessage(messageIndex);
     });
 
-    // DEBUG TOOL: simulates an AI message containing a delta block,
-    // without needing the real LLM to actually emit one yet. Finds the
-    // most recent AI message, appends a test delta to it, and runs it
-    // through the exact same handling path as a real message.
     SlashCommandParser.addCommandObject(
       SlashCommand.fromProps({
         name: "lwhtestdelta",
@@ -51,14 +41,15 @@ export class MessageHook {
           }
 
           chat[idx].mes +=
-            ' <lwh_delta>{"resources":{"gold":-5},"combat":{"inProgress":true}}</lwh_delta>';
+            ' <lwh-delta>{"resources":{"gold":-5},"combat":{"inProgress":true}}</lwh-delta>';
 
           await this._handleMessage(idx);
 
           alert(
             "Test delta injected into message " +
               idx +
-              ". Run /lwhinject to confirm gold dropped to 37 and combat.inProgress is true."
+              " (Runtime instance: " + this.runtime._instanceId + "). " +
+              "Run /lwhinject to confirm gold dropped to 37 and combat.inProgress is true."
           );
           return "";
         },
@@ -70,22 +61,27 @@ export class MessageHook {
   }
 
   async _handleMessage(messageIndex) {
-    const { chat, saveChat, updateMessageBlock } = SillyTavern.getContext();
-    const msg = chat[messageIndex];
+    try {
+      const { chat, saveChat, updateMessageBlock } = SillyTavern.getContext();
+      const msg = chat[messageIndex];
 
-    if (!msg || msg.is_user || msg.is_system) return;
+      if (!msg || msg.is_user || msg.is_system) return;
 
-    const { delta, cleanText } = extractDelta(msg.mes);
-    if (!delta) return;
+      const { delta, cleanText } = extractDelta(msg.mes);
+      if (!delta) return;
 
-    applyDelta(this.runtime, delta);
+      applyDelta(this.runtime, delta);
 
-    msg.mes = cleanText;
-    updateMessageBlock(messageIndex, msg);
-    await saveChat();
+      msg.mes = cleanText;
+      updateMessageBlock(messageIndex, msg);
+      await saveChat();
 
-    this.promptManager.refresh();
+      this.promptManager.refresh();
 
-    console.log("[MessageHook] Applied delta from message", messageIndex, delta);
+      console.log("[MessageHook] Applied delta from message", messageIndex, delta);
+    } catch (err) {
+      console.error("[MessageHook] Error handling message:", err);
+      alert("LWH MessageHook ERROR: " + err.message);
+    }
   }
 }
