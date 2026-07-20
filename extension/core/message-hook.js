@@ -36,7 +36,10 @@ export class MessageHook {
           }
 
           if (idx === -1) {
-            alert("No AI message found. Send a message and get a reply first, then try again.");
+            toastr.warning(
+              "No AI message found. Send a message and get a reply first, then try again.",
+              "LWH Companion"
+            );
             return "";
           }
 
@@ -45,11 +48,13 @@ export class MessageHook {
 
           await this._handleMessage(idx);
 
-          alert(
-            "Test delta injected into message " +
-              idx +
-              " (Runtime instance: " + this.runtime._instanceId + "). " +
-              "Run /lwhinject to confirm gold dropped to 37 and combat.inProgress is true."
+          console.log(
+            "[MessageHook] Test delta injected into message " + idx +
+              " (Runtime instance: " + this.runtime._instanceId + ")"
+          );
+          toastr.success(
+            "Test delta injected into message " + idx + ". Run /lwhinject to confirm gold dropped to 37 and combat.inProgress is true.",
+            "LWH Companion (instance " + this.runtime._instanceId + ")"
           );
           return "";
         },
@@ -81,7 +86,7 @@ export class MessageHook {
       console.log("[MessageHook] Applied delta from message", messageIndex, delta);
     } catch (err) {
       console.error("[MessageHook] Error handling message:", err);
-      alert("LWH MessageHook ERROR: " + err.message);
+      toastr.error(err.message, "LWH MessageHook ERROR");
     }
   }
 }

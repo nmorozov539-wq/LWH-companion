@@ -52,9 +52,11 @@ export class PromptManager {
         name: "lwhinject",
         callback: () => {
           this._inject();
-          alert(
-            "LWH manual inject:\n" +
-              JSON.stringify(this.runtime.getContract(), null, 2)
+          const contract = this.runtime.getContract();
+          console.log("[PromptManager] LWH manual inject:\n" + JSON.stringify(contract, null, 2));
+          toastr.info(
+            "State re-injected. Full contract logged to console.",
+            "LWH Companion"
           );
           return "";
         },

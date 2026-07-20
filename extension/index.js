@@ -35,5 +35,5 @@ try {
   });
 } catch (err) {
   console.error("[LWH Companion] Boot failed:", err);
-  alert("LWH ERROR: " + err.message);
+  toastr.error(err.message, "LWH Companion boot failed");
 }
