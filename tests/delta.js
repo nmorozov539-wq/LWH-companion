@@ -119,3 +119,27 @@ if (
 }
 
 section("Done");
+
+// --- TEST 6: model emits an abandoned/unclosed draft before the real one ---
+section("TEST 6: Double <lwh-delta> open, only later one closed");
+
+const doubleOpenText =
+  '"Done," he says. ' +
+  '<lwh-delta>{"resources":{"gold":-10}} ' +
+  '<lwh-delta>{"resources":{"gold":-5},"combat":{"inProgress":true}}</lwh-delta>';
+
+const result6 = extractDelta(doubleOpenText);
+
+console.log("Delta:", result6.delta);
+console.log("Clean text:", result6.cleanText);
+
+if (
+  result6.delta &&
+  result6.delta.resources.gold === -5 &&
+  result6.delta.combat.inProgress === true &&
+  !result6.cleanText.includes("lwh-delta")
+) {
+  console.log("✅ PASS");
+} else {
+  console.log("❌ FAIL");
+}

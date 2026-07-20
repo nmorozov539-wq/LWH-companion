@@ -73,14 +73,21 @@ export class MessageHook {
       if (!msg || msg.is_user || msg.is_system) return;
 
       const { delta, cleanText } = extractDelta(msg.mes);
+
+      // Even when nothing usable parsed out (malformed JSON, dangling/
+      // truncated tag), still write back cleanText if it differs — a
+      // broken tag left sitting in the stored message will corrupt any
+      // later delta appended after it (regex spans opening-to-first-close
+      // and swallows everything in between, including a second tag).
+      if (cleanText !== msg.mes) {
+        msg.mes = cleanText;
+        updateMessageBlock(messageIndex, msg);
+        await saveChat();
+      }
+
       if (!delta) return;
 
       applyDelta(this.runtime, delta);
-
-      msg.mes = cleanText;
-      updateMessageBlock(messageIndex, msg);
-      await saveChat();
-
       this.promptManager.refresh();
 
       console.log("[MessageHook] Applied delta from message", messageIndex, delta);

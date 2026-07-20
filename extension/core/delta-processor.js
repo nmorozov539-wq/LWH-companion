@@ -11,7 +11,14 @@
 // interpreted the underscores as emphasis syntax and mangled the tag
 // on display (raw stored text was fine, only the rendered HTML broke).
 
-const DELTA_REGEX = /<lwh-delta>([\s\S]*?)<\/lwh-delta>/;
+// NOTE: content is barred from containing another literal "<lwh-delta>".
+// Without this, a non-greedy match still spans from the FIRST open tag
+// to the FIRST close tag it finds — so if the model emits two attempts
+// in one reply (e.g. drafts a delta, revises it, forgets to close the
+// first one), the regex swallows both into one invalid JSON blob and
+// the real, well-formed delta is lost. This forces the match to start
+// at the last open tag before a close tag instead.
+const DELTA_REGEX = /<lwh-delta>((?:(?!<lwh-delta>)[\s\S])*?)<\/lwh-delta>/;
 // Matches an opening tag with no matching close — e.g. the reply got
 // cut off by a max-response-length limit mid-block.
 const DANGLING_OPEN_REGEX = /<lwh-delta>[\s\S]*$/;
@@ -20,7 +27,13 @@ export function extractDelta(text) {
   const match = text.match(DELTA_REGEX);
 
   if (match) {
-    const cleanText = text.replace(DELTA_REGEX, "").trim();
+    // Remove the matched pair, then sweep any leftover abandoned
+    // "<lwh-delta>..." fragments (e.g. an earlier unclosed draft the
+    // model left behind) so they don't show up as broken text in chat.
+    const cleanText = text
+      .replace(DELTA_REGEX, "")
+      .replace(/<lwh-delta>[^<]*/g, "")
+      .trim();
 
     let delta;
     try {
