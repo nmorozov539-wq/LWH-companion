@@ -77,8 +77,8 @@ export class PromptManager {
 
     registerCommand({
       name: "lwhscenarios",
-      callback: async (args) => {
-        const output = await this.runtime.scenarios.handleCommand(args, {
+      callback: async (namedArgs, value) => {
+        const output = await this.runtime.scenarios.handleCommand(value || "", {
           popup: this._callGenericPopup,
           popupType: this._POPUP_TYPE,
           requestAPICall,

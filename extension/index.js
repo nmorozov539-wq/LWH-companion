@@ -31,9 +31,15 @@ export let runtime;
     messageHook.init();
 
     const { eventSource, event_types } = SillyTavern.getContext();
-    eventSource.on(event_types.APP_READY, () => {
+
+    eventSource.on(event_types.APP_READY, async () => {
+      // Context is fully initialized here — extension_settings and
+      // chat_metadata are available. Safe to init persistence now.
+      await runtime.syncPersistence();
+      promptManager.refresh();
       toastr.success("Runtime booted successfully", "LWH Companion");
     });
+
   } catch (err) {
     console.error("[LWH Companion] Boot failed:", err);
     toastr.error(err.message, "LWH Companion boot failed");

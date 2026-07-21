@@ -39,6 +39,7 @@ export class PersistenceService {
    *          state was restored. Returns null when persistence is disabled.
    */
   init(stateManager, manifests = []) {
+    if (this._enabled) return Promise.resolve(this._restored); // already initialized
     this._stateManager = stateManager;
     this._moduleVersions = {};
     for (const manifest of manifests) {

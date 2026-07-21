@@ -36,12 +36,11 @@ export class Runtime {
       factory: entry.factory,
     }));
 
-    const manifests = this._modules.map((entry) => entry.manifest).filter(Boolean);
-    try {
-      await this.persistence.init(this.state, manifests);
-    } catch (err) {
-      console.error("[Runtime] Persistence initialization failed:", err);
-    }
+    // Persistence is NOT initialized here — the extension loads inside
+    // ST's loadExtensionSettings, before the context has extension_settings
+    // or chat_metadata available. Calling persistence.init() this early
+    // always falls through to "no adapter". syncPersistence() is called
+    // from the APP_READY handler instead, once the context is fully ready.
 
     const unsubscribe = this.state.subscribe(() => {
       try {
@@ -64,6 +63,26 @@ export class Runtime {
     }
     this.events.emit("RuntimeStarted", { loadedIds, failedIds });
     return { loadedIds, failedIds };
+  }
+
+  // Called from APP_READY — by that point ST's context is fully initialized
+  // and chat_metadata / extension_settings are available. Loads any saved
+  // state for the current chat and overrides the default module state.
+  async syncPersistence() {
+    const manifests = this._modules.map((entry) => entry.manifest).filter(Boolean);
+    try {
+      const restored = await this.persistence.init(this.state, manifests);
+      if (restored) {
+        console.log("[Runtime] Persistence synced: saved state restored.");
+      } else {
+        // First run for this chat — save the fresh default state so future
+        // reloads have something to restore.
+        await this.persistence.saveNow();
+        console.log("[Runtime] Persistence synced: no saved state, defaults written.");
+      }
+    } catch (err) {
+      console.error("[Runtime] syncPersistence failed:", err);
+    }
   }
 
   queryState(reader, target) {
