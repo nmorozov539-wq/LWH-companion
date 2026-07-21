@@ -1,7 +1,7 @@
 {
     "name": "LWH Companion",
     "version": "0.1.0",
-    "author": "You",
+    "author": "Riv539",
     "description": "A modular toolkit for long-form roleplay",
     "js": "index.js"
 }

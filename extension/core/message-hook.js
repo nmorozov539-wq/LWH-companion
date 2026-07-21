@@ -62,6 +62,11 @@ export class MessageHook {
       })
     );
 
+    eventSource.on(event_types.CHAT_CHANGED, async () => {
+      await this.runtime.handleChatChanged();
+      this.promptManager.refresh();
+    });
+
     console.log("[MessageHook] Initialized, listening for MESSAGE_RECEIVED.");
   }
 
@@ -80,6 +85,7 @@ export class MessageHook {
       // succeeding.
       if (delta) {
         applyDelta(this.runtime, delta);
+        await this.runtime.saveNow({ skipChatSave: true });
         this.promptManager.refresh();
         console.log("[MessageHook] Applied delta from message", messageIndex, delta);
       }
@@ -100,6 +106,9 @@ export class MessageHook {
           );
         }
         await saveChat();
+      } else if (delta) {
+        // State changed but chat text didn't; ensure chat metadata persists.
+        await this.runtime.saveNow();
       }
     } catch (err) {
       console.error("[MessageHook] Error handling message:", err);

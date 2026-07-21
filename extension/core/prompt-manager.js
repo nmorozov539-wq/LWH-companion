@@ -33,6 +33,7 @@ export class PromptManager {
       setExtensionPrompt,
       callGenericPopup,
       POPUP_TYPE,
+      requestAPICall,
     } = SillyTavern.getContext();
 
     this._setExtensionPrompt = setExtensionPrompt;
@@ -43,31 +44,49 @@ export class PromptManager {
       this._inject();
     });
 
-    eventSource.on(event_types.GENERATE_BEFORE_COMBINE_PROMPTS, () => {
-      this._inject();
+    const registerCommand = (props) => {
+      SlashCommandParser.addCommandObject(SlashCommand.fromProps(props));
+    };
+
+    registerCommand({
+      name: "lwhcurrentstate",
+      callback: async () => {
+        this._inject();
+        const contract = this.runtime.getContract();
+        const json = JSON.stringify(contract, null, 2);
+        console.log("[PromptManager] LWH current state:\n" + json);
+        await this._callGenericPopup(
+          `<h3>LWH Companion — current state</h3><pre style=\"text-align:left; white-space:pre-wrap;\">${json}</pre>`,
+          this._POPUP_TYPE.TEXT
+        );
+        return "";
+      },
+      helpString: "Show LWH Companion's current tracked state (also re-syncs it into the next prompt).",
     });
 
-    eventSource.on(event_types.CHAT_CHANGED, () => {
-      this._inject();
+    registerCommand({
+      name: "lwhresetstate",
+      callback: async () => {
+        await this.runtime.resetState();
+        this.refresh();
+        toastr.success("LWH Companion state cleared for this chat.", "LWH Companion");
+        return "";
+      },
+      helpString: "Clear LWH Companion's persisted memory for the current chat.",
     });
 
-    SlashCommandParser.addCommandObject(
-      SlashCommand.fromProps({
-        name: "lwhcurrentstate",
-        callback: async () => {
-          this._inject();
-          const contract = this.runtime.getContract();
-          const json = JSON.stringify(contract, null, 2);
-          console.log("[PromptManager] LWH current state:\n" + json);
-          await this._callGenericPopup(
-            `<h3>LWH Companion — current state</h3><pre style="text-align:left; white-space:pre-wrap;">${json}</pre>`,
-            this._POPUP_TYPE.TEXT
-          );
-          return "";
-        },
-        helpString: "Show LWH Companion's current tracked state (also re-syncs it into the next prompt).",
-      })
-    );
+    registerCommand({
+      name: "lwhscenarios",
+      callback: async (args) => {
+        const output = await this.runtime.scenarios.handleCommand(args, {
+          popup: this._callGenericPopup,
+          popupType: this._POPUP_TYPE,
+          requestAPICall,
+        });
+        return output || "";
+      },
+      helpString: "Scenario manager: list, apply templates, edit, or AI-generate starting state.",
+    });
 
     console.log("[PromptManager] Initialized, waiting for APP_READY.");
   }

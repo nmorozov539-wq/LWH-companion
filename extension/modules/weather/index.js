@@ -3,10 +3,13 @@
 export default function (runtime) {
   return {
     init() {
-      runtime.state.setState("weather", {
-        condition: "overcast",
-        temperature: "cold",
-      });
+      const existing = runtime.state.getOwnState("weather");
+      if (!existing || Object.keys(existing).length === 0) {
+        runtime.state.setState("weather", {
+          condition: "overcast",
+          temperature: "cold",
+        });
+      }
     },
   };
 }

@@ -3,10 +3,13 @@
 export default function (runtime) {
   return {
     init() {
-      runtime.state.setState("resources", {
-        gold: 42,
-        rations: 5,
-      });
+      const existing = runtime.state.getOwnState("resources");
+      if (!existing || Object.keys(existing).length === 0) {
+        runtime.state.setState("resources", {
+          gold: 42,
+          rations: 5,
+        });
+      }
     },
 
     // delta example: { gold: -5, rations: -1 }

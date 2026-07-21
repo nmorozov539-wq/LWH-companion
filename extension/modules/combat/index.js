@@ -13,9 +13,12 @@ export default function (runtime) {
       const resources = runtime.state.queryState("combat", "resources");
       console.log("[Combat] Resources available at boot:", resources);
 
-      runtime.state.setState("combat", {
-        inProgress: false,
-      });
+      const existing = runtime.state.getOwnState("combat");
+      if (!existing || Object.keys(existing).length === 0) {
+        runtime.state.setState("combat", {
+          inProgress: false,
+        });
+      }
     },
 
     // delta example: { inProgress: true }

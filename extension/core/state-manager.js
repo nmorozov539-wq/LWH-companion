@@ -1,9 +1,17 @@
 // extension/core/state-manager.js
 
+function deepClone(value) {
+  if (typeof structuredClone === "function") {
+    return structuredClone(value);
+  }
+  return JSON.parse(JSON.stringify(value));
+}
+
 export class StateManager {
   constructor() {
     this._state = { modules: {} };
     this._readLog = [];
+    this._listeners = new Set();
   }
 
   registerNamespace(moduleId) {
@@ -22,10 +30,44 @@ export class StateManager {
       ...this._state.modules[moduleId],
       ...data,
     };
+    this._notifyChange();
   }
 
   getOwnState(moduleId) {
     return this._state.modules[moduleId];
+  }
+
+  hydrate(modulesState, { emitChange = true } = {}) {
+    if (!modulesState || typeof modulesState !== "object") return;
+    this._state.modules = {};
+    for (const [moduleId, data] of Object.entries(modulesState)) {
+      this._state.modules[moduleId] = deepClone(data);
+    }
+    if (emitChange) {
+      this._notifyChange();
+    }
+  }
+
+  getSnapshot() {
+    return deepClone(this._state.modules);
+  }
+
+  subscribe(listener) {
+    if (typeof listener !== "function") return () => {};
+    this._listeners.add(listener);
+    return () => {
+      this._listeners.delete(listener);
+    };
+  }
+
+  _notifyChange() {
+    for (const listener of this._listeners) {
+      try {
+        listener(this);
+      } catch (err) {
+        console.error("[StateManager] Listener threw during notification:", err);
+      }
+    }
   }
 
   queryState(reader, target) {

@@ -14,26 +14,28 @@ import weatherFactory from "./modules/weather/index.js";
 
 export let runtime;
 
-try {
-  runtime = new Runtime();
+(async function init() {
+  try {
+    runtime = new Runtime();
 
-  runtime.boot([
-    { manifest: resourcesManifest, factory: resourcesFactory },
-    { manifest: combatManifest, factory: combatFactory },
-    { manifest: weatherManifest, factory: weatherFactory },
-  ]);
+    await runtime.boot([
+      { manifest: resourcesManifest, factory: resourcesFactory },
+      { manifest: combatManifest, factory: combatFactory },
+      { manifest: weatherManifest, factory: weatherFactory },
+    ]);
 
-  const promptManager = new PromptManager(runtime);
-  promptManager.init();
+    const promptManager = new PromptManager(runtime);
+    promptManager.init();
 
-  const messageHook = new MessageHook(runtime, promptManager);
-  messageHook.init();
+    const messageHook = new MessageHook(runtime, promptManager);
+    messageHook.init();
 
-  const { eventSource, event_types } = SillyTavern.getContext();
-  eventSource.on(event_types.APP_READY, () => {
-    toastr.success("Runtime booted successfully", "LWH Companion");
-  });
-} catch (err) {
-  console.error("[LWH Companion] Boot failed:", err);
-  toastr.error(err.message, "LWH Companion boot failed");
-}
+    const { eventSource, event_types } = SillyTavern.getContext();
+    eventSource.on(event_types.APP_READY, () => {
+      toastr.success("Runtime booted successfully", "LWH Companion");
+    });
+  } catch (err) {
+    console.error("[LWH Companion] Boot failed:", err);
+    toastr.error(err.message, "LWH Companion boot failed");
+  }
+})();
