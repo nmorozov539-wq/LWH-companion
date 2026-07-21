@@ -74,6 +74,16 @@ export class MessageHook {
 
       const { delta, cleanText } = extractDelta(msg.mes);
 
+      // Apply to the Runtime FIRST, before any DOM/UI touch. updateMessageBlock
+      // is SillyTavern's own function and can throw for reasons unrelated to us
+      // (e.g. its reasoning-UI feature) — state must never depend on that
+      // succeeding.
+      if (delta) {
+        applyDelta(this.runtime, delta);
+        this.promptManager.refresh();
+        console.log("[MessageHook] Applied delta from message", messageIndex, delta);
+      }
+
       // Even when nothing usable parsed out (malformed JSON, dangling/
       // truncated tag), still write back cleanText if it differs — a
       // broken tag left sitting in the stored message will corrupt any
@@ -81,16 +91,16 @@ export class MessageHook {
       // and swallows everything in between, including a second tag).
       if (cleanText !== msg.mes) {
         msg.mes = cleanText;
-        updateMessageBlock(messageIndex, msg);
+        try {
+          updateMessageBlock(messageIndex, msg);
+        } catch (uiErr) {
+          console.warn(
+            "[MessageHook] updateMessageBlock UI refresh failed (state already applied; display text may lag until next render):",
+            uiErr.message
+          );
+        }
         await saveChat();
       }
-
-      if (!delta) return;
-
-      applyDelta(this.runtime, delta);
-      this.promptManager.refresh();
-
-      console.log("[MessageHook] Applied delta from message", messageIndex, delta);
     } catch (err) {
       console.error("[MessageHook] Error handling message:", err);
       toastr.error(err.message, "LWH MessageHook ERROR");
