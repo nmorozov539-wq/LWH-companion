@@ -94,12 +94,12 @@ if (result4.delta === null && result4.cleanText === plainText) {
   console.log("❌ FAIL");
 }
 
-// --- TEST 5: truncated/dangling delta tag (cut off by token limit) ---
-section("TEST 5: Truncated delta tag");
+// --- TEST 5: genuinely truncated — JSON itself cut off mid-object ---
+section("TEST 5: Genuine truncation (braces never balance)");
 
 const truncatedText =
   'Ten gold coins clatter onto the table. ' +
-  '<lwh-delta>{"resources":{"gold":10}}</lwh-';
+  '<lwh-delta>{"resources":{"gold":10';
 
 const result5 = extractDelta(truncatedText);
 
@@ -138,6 +138,31 @@ if (
   result6.delta.resources.gold === -5 &&
   result6.delta.combat.inProgress === true &&
   !result6.cleanText.includes("lwh-delta")
+) {
+  console.log("✅ PASS");
+} else {
+  console.log("❌ FAIL");
+}
+
+// --- TEST 7: complete valid JSON but model never wrote a closing tag ---
+// (the actual failure observed in practice — not a token-limit cutoff,
+// the model just doesn't reliably reproduce custom closing syntax)
+section("TEST 7: Valid JSON, no closing tag at all");
+
+const noCloseTagText =
+  'The coins vanish into his pocket. ' +
+  '<lwh-delta>{"resources":{"gold":10}}';
+
+const result7 = extractDelta(noCloseTagText);
+
+console.log("Delta:", result7.delta, "(expected gold: 10)");
+console.log("Clean text:", result7.cleanText);
+
+if (
+  result7.delta &&
+  result7.delta.resources.gold === 10 &&
+  !result7.cleanText.includes("lwh-delta") &&
+  !result7.cleanText.includes("{")
 ) {
   console.log("✅ PASS");
 } else {
