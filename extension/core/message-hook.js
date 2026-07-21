@@ -23,7 +23,7 @@ export class MessageHook {
 
     SlashCommandParser.addCommandObject(
       SlashCommand.fromProps({
-        name: "lwhtestdelta",
+        name: "lwhtestupdate",
         callback: async () => {
           const { chat } = SillyTavern.getContext();
 
@@ -49,16 +49,16 @@ export class MessageHook {
           await this._handleMessage(idx);
 
           console.log(
-            "[MessageHook] Test delta injected into message " + idx +
+            "[MessageHook] Test update injected into message " + idx +
               " (Runtime instance: " + this.runtime._instanceId + ")"
           );
           toastr.success(
-            "Test delta injected into message " + idx + ". Run /lwhinject to confirm gold dropped to 37 and combat.inProgress is true.",
+            "Test update injected into message " + idx + ". Run /lwhcurrentstate to confirm gold dropped to 37 and combat.inProgress is true.",
             "LWH Companion (instance " + this.runtime._instanceId + ")"
           );
           return "";
         },
-        helpString: "DEBUG: simulate an AI-authored delta on the last AI message.",
+        helpString: "DEBUG: simulate an AI-authored state update on the last AI message.",
       })
     );
 

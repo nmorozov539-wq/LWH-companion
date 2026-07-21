@@ -31,9 +31,13 @@ export class PromptManager {
       SlashCommandParser,
       SlashCommand,
       setExtensionPrompt,
+      callGenericPopup,
+      POPUP_TYPE,
     } = SillyTavern.getContext();
 
     this._setExtensionPrompt = setExtensionPrompt;
+    this._callGenericPopup = callGenericPopup;
+    this._POPUP_TYPE = POPUP_TYPE;
 
     eventSource.on(event_types.APP_READY, () => {
       this._inject();
@@ -49,18 +53,19 @@ export class PromptManager {
 
     SlashCommandParser.addCommandObject(
       SlashCommand.fromProps({
-        name: "lwhinject",
-        callback: () => {
+        name: "lwhcurrentstate",
+        callback: async () => {
           this._inject();
           const contract = this.runtime.getContract();
-          console.log("[PromptManager] LWH manual inject:\n" + JSON.stringify(contract, null, 2));
-          toastr.info(
-            "State re-injected. Full contract logged to console.",
-            "LWH Companion"
+          const json = JSON.stringify(contract, null, 2);
+          console.log("[PromptManager] LWH current state:\n" + json);
+          await this._callGenericPopup(
+            `<h3>LWH Companion — current state</h3><pre style="text-align:left; white-space:pre-wrap;">${json}</pre>`,
+            this._POPUP_TYPE.TEXT
           );
           return "";
         },
-        helpString: "Manually re-inject LWH Companion state and display it.",
+        helpString: "Show LWH Companion's current tracked state (also re-syncs it into the next prompt).",
       })
     );
 

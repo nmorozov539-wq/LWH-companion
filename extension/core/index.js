@@ -8,7 +8,7 @@ export class Runtime {
   constructor() {
     // Random ID to detect if multiple Runtime instances accidentally
     // exist at once (e.g. a stale extension load surviving a partial
-    // reload) — visible via /lwhinject and /lwhtestdelta output.
+    // reload) — visible via /lwhcurrentstate and /lwhtestupdate output.
     this._instanceId = Math.random().toString(36).slice(2, 8);
 
     this.state = new StateManager();
