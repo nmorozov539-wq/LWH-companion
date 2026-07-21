@@ -137,7 +137,7 @@ export class ScenarioService {
 
     const response = await requestAPICall({
       body: {
-        prompt,
+        messages: [{ role: "user", content: prompt }],
         temperature: 0.4,
         max_tokens: 600,
       },

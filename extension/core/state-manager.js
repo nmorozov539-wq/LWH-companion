@@ -37,6 +37,10 @@ export class StateManager {
     return this._state.modules[moduleId];
   }
 
+  reset({ emitChange = true } = {}) {
+    this.hydrate({}, { emitChange });
+  }
+
   hydrate(modulesState, { emitChange = true } = {}) {
     if (!modulesState || typeof modulesState !== "object") return;
     this._state.modules = {};

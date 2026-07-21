@@ -25,10 +25,8 @@ function deepClone(value) {
 export class PersistenceService {
   constructor() {
     this._enabled = false;
-    this._ctx = null;
     this._stateManager = null;
     this._moduleVersions = {};
-    this._adapter = null;
     this._debounceHandle = null;
     this._latestSnapshot = null;
     this._restored = false;
@@ -57,7 +55,9 @@ export class PersistenceService {
       return null;
     }
 
-    this._ctx = SillyTavern.getContext();
+    // Do NOT capture context here — no chat is loaded yet at boot time
+    // (APP_READY hasn't fired). Context is resolved fresh on each operation
+    // so that chat_metadata is available after the first CHAT_CHANGED.
     this._enabled = true;
 
     return this._readPayload()
@@ -198,16 +198,20 @@ export class PersistenceService {
 
   _resolveAdapter() {
     if (!this._enabled) return null;
-    if (this._adapter) return this._adapter;
 
-    const ctx = this._ctx;
+    // Always resolve against a fresh context — do NOT cache the adapter.
+    // At boot time (when init() runs) no chat is loaded yet, so
+    // chat_metadata doesn't exist. Caching the adapter at that point
+    // permanently locks us into the extension_settings fallback even
+    // after CHAT_CHANGED fires and a real chat becomes available.
+    const ctx = SillyTavern.getContext();
 
     // Preferred modern API: dedicated helpers for extension chat metadata.
     if (
       typeof ctx?.getExtensionChatMetadata === "function" &&
       typeof ctx?.setExtensionChatMetadata === "function"
     ) {
-      this._adapter = {
+      return {
         read: () => ctx.getExtensionChatMetadata(METADATA_ENTRY_KEY),
         write: async (payload) => {
           await ctx.setExtensionChatMetadata(METADATA_ENTRY_KEY, payload);
@@ -220,12 +224,11 @@ export class PersistenceService {
           }
         },
       };
-      return this._adapter;
     }
 
     // Legacy path: manipulate chat_metadata object directly.
     if (ctx && typeof ctx === "object" && ctx.chat_metadata) {
-      this._adapter = {
+      return {
         read: async () => {
           const root = ctx.chat_metadata?.[METADATA_ROOT_KEY] ||
             ctx.chat_metadata?.extensions;
@@ -262,13 +265,15 @@ export class PersistenceService {
           }
         },
       };
-      return this._adapter;
     }
 
     // Fallback: extension-wide settings (persists across chats, but better
     // than nothing if metadata helpers are unavailable).
     if (ctx && typeof ctx === "object" && ctx.extension_settings) {
-      this._adapter = {
+      console.warn(
+        "[PersistenceService] Falling back to extension_settings for persistence; state will be shared across chats"
+      );
+      return {
         read: async () => ctx.extension_settings[EXTENSION_SETTINGS_KEY] || null,
         write: async (payload) => {
           if (payload === null) {
@@ -285,17 +290,11 @@ export class PersistenceService {
           }
         },
       };
-      console.warn(
-        "[PersistenceService] Falling back to extension_settings for persistence; state will be shared across chats"
-      );
-      return this._adapter;
     }
 
     console.warn(
       "[PersistenceService] No persistence adapter available; state will reset on reload"
     );
-    this._adapter = null;
-    this._enabled = false;
     return null;
   }
 }
