@@ -200,107 +200,85 @@ export class PersistenceService {
   _resolveAdapter() {
     if (!this._enabled) return null;
 
+    // getContext() uses camelCase in this ST version:
+    // chatMetadata, extensionSettings, updateChatMetadata, saveMetadata, etc.
     const ctx = SillyTavern.getContext();
-
-    // Helper: read a named browser global without ReferenceError.
-    // ST exposes extension_settings and chat_metadata as window globals,
-    // not always through getContext() — so we check both.
-    const getGlobal = (name) => {
-      try { return typeof window !== "undefined" ? window[name] : undefined; }
-      catch { return undefined; }
-    };
 
     // 1. Modern dedicated API.
     if (
       typeof ctx?.getExtensionChatMetadata === "function" &&
       typeof ctx?.setExtensionChatMetadata === "function"
     ) {
-      console.log("[PersistenceService] Using modern chat-metadata API.");
+      console.log("[PersistenceService] Using modern getExtensionChatMetadata API.");
       return {
         read: () => ctx.getExtensionChatMetadata(METADATA_ENTRY_KEY),
         write: async (payload) => {
           await ctx.setExtensionChatMetadata(METADATA_ENTRY_KEY, payload);
         },
         afterWrite: async () => {
-          const save = ctx.saveMetadata ?? ctx.saveChat ?? getGlobal("saveChat");
+          const save = ctx.saveMetadata ?? ctx.saveMetadataDebounced ?? ctx.saveChat;
           if (typeof save === "function") await save();
         },
       };
     }
 
-    // 2. chat_metadata — try context then window global.
-    //    Re-evaluated on each call (adapter not cached) so CHAT_CHANGED
-    //    picks up the new chat's metadata object automatically.
-    const chatMeta = ctx?.chat_metadata ?? getGlobal("chat_metadata");
-    if (chatMeta && typeof chatMeta === "object") {
-      console.log("[PersistenceService] Using chat_metadata adapter.");
+    // 2. chatMetadata — the standard path in current ST builds.
+    //    updateChatMetadata() is the correct write API; direct mutation
+    //    is the fallback if it isn't available.
+    if (ctx?.chatMetadata && typeof ctx.chatMetadata === "object") {
+      console.log("[PersistenceService] Using chatMetadata adapter.");
       return {
         read: async () => {
-          const meta = ctx?.chat_metadata ?? getGlobal("chat_metadata") ?? {};
+          const meta = ctx.chatMetadata ?? {};
           const root = meta[METADATA_ROOT_KEY] ?? meta.extensions;
           if (root && typeof root === "object") return root[METADATA_ENTRY_KEY] ?? null;
           return meta[METADATA_ENTRY_KEY] ?? null;
         },
         write: async (payload) => {
-          const meta = ctx?.chat_metadata ?? getGlobal("chat_metadata") ?? {};
-          const root = meta[METADATA_ROOT_KEY] ?? meta.extensions ?? {};
-          if (!meta[METADATA_ROOT_KEY] && !meta.extensions) {
-            meta[METADATA_ROOT_KEY] = root;
-          } else if (!meta[METADATA_ROOT_KEY]) {
-            meta.extensions = root;
+          if (typeof ctx.updateChatMetadata === "function") {
+            await ctx.updateChatMetadata({ [METADATA_ENTRY_KEY]: payload });
           } else {
-            meta[METADATA_ROOT_KEY] = root;
-          }
-          if (payload === null) {
-            delete root[METADATA_ENTRY_KEY];
-          } else {
-            root[METADATA_ENTRY_KEY] = payload;
+            // Direct mutation fallback.
+            const meta = ctx.chatMetadata ?? {};
+            if (payload === null) {
+              delete meta[METADATA_ENTRY_KEY];
+            } else {
+              meta[METADATA_ENTRY_KEY] = payload;
+            }
           }
         },
         afterWrite: async () => {
-          const save =
-            ctx?.saveMetadata ?? ctx?.saveChat ??
-            getGlobal("saveMetadata") ?? getGlobal("saveChat");
+          const save = ctx.saveMetadata ?? ctx.saveMetadataDebounced ?? ctx.saveChat;
           if (typeof save === "function") await save();
         },
       };
     }
 
-    // 3. extension_settings — try context then window global.
-    //    Shared across chats but better than nothing.
-    const extSettings = ctx?.extension_settings ?? getGlobal("extension_settings");
-    if (extSettings && typeof extSettings === "object") {
+    // 3. extensionSettings fallback — shared across chats but better than nothing.
+    if (ctx?.extensionSettings && typeof ctx.extensionSettings === "object") {
       console.warn(
-        "[PersistenceService] Falling back to extension_settings (shared across chats)."
+        "[PersistenceService] Falling back to extensionSettings (shared across chats)."
       );
       return {
-        read: async () => {
-          const s = ctx?.extension_settings ?? getGlobal("extension_settings") ?? {};
-          return s[EXTENSION_SETTINGS_KEY] ?? null;
-        },
+        read: async () => (ctx.extensionSettings[EXTENSION_SETTINGS_KEY]) ?? null,
         write: async (payload) => {
-          const s = ctx?.extension_settings ?? getGlobal("extension_settings") ?? {};
           if (payload === null) {
-            delete s[EXTENSION_SETTINGS_KEY];
+            delete ctx.extensionSettings[EXTENSION_SETTINGS_KEY];
           } else {
-            s[EXTENSION_SETTINGS_KEY] = payload;
+            ctx.extensionSettings[EXTENSION_SETTINGS_KEY] = payload;
           }
         },
         afterWrite: async () => {
-          const save =
-            ctx?.saveExtensionSettings ?? ctx?.saveChat ??
-            getGlobal("saveExtensionSettings") ?? getGlobal("saveChat");
+          const save = ctx.saveSettingsDebounced ?? ctx.saveExtensionSettings ?? ctx.saveChat;
           if (typeof save === "function") await save();
         },
       };
     }
 
-    // Nothing worked — log what was visible to help diagnose.
     console.warn(
       "[PersistenceService] No persistence adapter found.",
-      "\nContext keys:", Object.keys(ctx ?? {}).join(", "),
-      "\nGlobals: chat_metadata =", typeof getGlobal("chat_metadata"),
-      "| extension_settings =", typeof getGlobal("extension_settings")
+      "
+Context keys:", Object.keys(ctx ?? {}).join(", ")
     );
     return null;
   }
