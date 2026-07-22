@@ -276,9 +276,8 @@ export class PersistenceService {
     }
 
     console.warn(
-      "[PersistenceService] No persistence adapter found.",
-      "
-Context keys:", Object.keys(ctx ?? {}).join(", ")
+      "[PersistenceService] No persistence adapter found. Context keys: " +
+      Object.keys(ctx ?? {}).join(", ")
     );
     return null;
   }
