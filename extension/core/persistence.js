@@ -200,58 +200,57 @@ export class PersistenceService {
   _resolveAdapter() {
     if (!this._enabled) return null;
 
-    // Always resolve against a fresh context — do NOT cache the adapter.
-    // At boot time (when init() runs) no chat is loaded yet, so
-    // chat_metadata doesn't exist. Caching the adapter at that point
-    // permanently locks us into the extension_settings fallback even
-    // after CHAT_CHANGED fires and a real chat becomes available.
     const ctx = SillyTavern.getContext();
 
-    // Preferred modern API: dedicated helpers for extension chat metadata.
+    // Helper: read a named browser global without ReferenceError.
+    // ST exposes extension_settings and chat_metadata as window globals,
+    // not always through getContext() — so we check both.
+    const getGlobal = (name) => {
+      try { return typeof window !== "undefined" ? window[name] : undefined; }
+      catch { return undefined; }
+    };
+
+    // 1. Modern dedicated API.
     if (
       typeof ctx?.getExtensionChatMetadata === "function" &&
       typeof ctx?.setExtensionChatMetadata === "function"
     ) {
+      console.log("[PersistenceService] Using modern chat-metadata API.");
       return {
         read: () => ctx.getExtensionChatMetadata(METADATA_ENTRY_KEY),
         write: async (payload) => {
           await ctx.setExtensionChatMetadata(METADATA_ENTRY_KEY, payload);
         },
         afterWrite: async () => {
-          if (typeof ctx.saveMetadata === "function") {
-            await ctx.saveMetadata();
-          } else if (typeof ctx.saveChat === "function") {
-            await ctx.saveChat();
-          }
+          const save = ctx.saveMetadata ?? ctx.saveChat ?? getGlobal("saveChat");
+          if (typeof save === "function") await save();
         },
       };
     }
 
-    // Legacy path: manipulate chat_metadata object directly.
-    if (ctx && typeof ctx === "object" && ctx.chat_metadata) {
+    // 2. chat_metadata — try context then window global.
+    //    Re-evaluated on each call (adapter not cached) so CHAT_CHANGED
+    //    picks up the new chat's metadata object automatically.
+    const chatMeta = ctx?.chat_metadata ?? getGlobal("chat_metadata");
+    if (chatMeta && typeof chatMeta === "object") {
+      console.log("[PersistenceService] Using chat_metadata adapter.");
       return {
         read: async () => {
-          const root = ctx.chat_metadata?.[METADATA_ROOT_KEY] ||
-            ctx.chat_metadata?.extensions;
-          if (root && typeof root === "object") {
-            return root[METADATA_ENTRY_KEY] || null;
-          }
-          return ctx.chat_metadata[METADATA_ENTRY_KEY] || null;
+          const meta = ctx?.chat_metadata ?? getGlobal("chat_metadata") ?? {};
+          const root = meta[METADATA_ROOT_KEY] ?? meta.extensions;
+          if (root && typeof root === "object") return root[METADATA_ENTRY_KEY] ?? null;
+          return meta[METADATA_ENTRY_KEY] ?? null;
         },
         write: async (payload) => {
-          if (!ctx.chat_metadata || typeof ctx.chat_metadata !== "object") {
-            ctx.chat_metadata = {};
-          }
-
-          const root = ctx.chat_metadata[METADATA_ROOT_KEY] || ctx.chat_metadata.extensions || {};
-          if (!ctx.chat_metadata[METADATA_ROOT_KEY] && !ctx.chat_metadata.extensions) {
-            ctx.chat_metadata[METADATA_ROOT_KEY] = root;
-          } else if (!ctx.chat_metadata[METADATA_ROOT_KEY]) {
-            ctx.chat_metadata.extensions = root;
+          const meta = ctx?.chat_metadata ?? getGlobal("chat_metadata") ?? {};
+          const root = meta[METADATA_ROOT_KEY] ?? meta.extensions ?? {};
+          if (!meta[METADATA_ROOT_KEY] && !meta.extensions) {
+            meta[METADATA_ROOT_KEY] = root;
+          } else if (!meta[METADATA_ROOT_KEY]) {
+            meta.extensions = root;
           } else {
-            ctx.chat_metadata[METADATA_ROOT_KEY] = root;
+            meta[METADATA_ROOT_KEY] = root;
           }
-
           if (payload === null) {
             delete root[METADATA_ENTRY_KEY];
           } else {
@@ -259,42 +258,49 @@ export class PersistenceService {
           }
         },
         afterWrite: async () => {
-          if (typeof ctx.saveMetadata === "function") {
-            await ctx.saveMetadata();
-          } else if (typeof ctx.saveChat === "function") {
-            await ctx.saveChat();
-          }
+          const save =
+            ctx?.saveMetadata ?? ctx?.saveChat ??
+            getGlobal("saveMetadata") ?? getGlobal("saveChat");
+          if (typeof save === "function") await save();
         },
       };
     }
 
-    // Fallback: extension-wide settings (persists across chats, but better
-    // than nothing if metadata helpers are unavailable).
-    if (ctx && typeof ctx === "object" && ctx.extension_settings) {
+    // 3. extension_settings — try context then window global.
+    //    Shared across chats but better than nothing.
+    const extSettings = ctx?.extension_settings ?? getGlobal("extension_settings");
+    if (extSettings && typeof extSettings === "object") {
       console.warn(
-        "[PersistenceService] Falling back to extension_settings for persistence; state will be shared across chats"
+        "[PersistenceService] Falling back to extension_settings (shared across chats)."
       );
       return {
-        read: async () => ctx.extension_settings[EXTENSION_SETTINGS_KEY] || null,
+        read: async () => {
+          const s = ctx?.extension_settings ?? getGlobal("extension_settings") ?? {};
+          return s[EXTENSION_SETTINGS_KEY] ?? null;
+        },
         write: async (payload) => {
+          const s = ctx?.extension_settings ?? getGlobal("extension_settings") ?? {};
           if (payload === null) {
-            delete ctx.extension_settings[EXTENSION_SETTINGS_KEY];
+            delete s[EXTENSION_SETTINGS_KEY];
           } else {
-            ctx.extension_settings[EXTENSION_SETTINGS_KEY] = payload;
+            s[EXTENSION_SETTINGS_KEY] = payload;
           }
         },
         afterWrite: async () => {
-          if (typeof ctx.saveExtensionSettings === "function") {
-            await ctx.saveExtensionSettings();
-          } else if (typeof ctx.saveChat === "function") {
-            await ctx.saveChat();
-          }
+          const save =
+            ctx?.saveExtensionSettings ?? ctx?.saveChat ??
+            getGlobal("saveExtensionSettings") ?? getGlobal("saveChat");
+          if (typeof save === "function") await save();
         },
       };
     }
 
+    // Nothing worked — log what was visible to help diagnose.
     console.warn(
-      "[PersistenceService] No persistence adapter available; state will reset on reload"
+      "[PersistenceService] No persistence adapter found.",
+      "\nContext keys:", Object.keys(ctx ?? {}).join(", "),
+      "\nGlobals: chat_metadata =", typeof getGlobal("chat_metadata"),
+      "| extension_settings =", typeof getGlobal("extension_settings")
     );
     return null;
   }
