@@ -40,6 +40,18 @@ export class StateManager {
     this._notifyChange();
   }
 
+  // Like setState but replaces the entire module state instead of merging.
+  // Required when deletions must take effect (e.g. removing a memory fact).
+  replaceState(moduleId, data) {
+    if (!Object.prototype.hasOwnProperty.call(this._state.modules, moduleId)) {
+      throw new Error(
+        `[StateManager] Cannot replace unregistered namespace "${moduleId}"`
+      );
+    }
+    this._state.modules[moduleId] = deepClone(data);
+    this._notifyChange();
+  }
+
   getOwnState(moduleId) {
     return this._state.modules[moduleId];
   }

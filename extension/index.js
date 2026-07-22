@@ -11,6 +11,8 @@ import { manifest as combatManifest } from "./modules/combat/module.js";
 import combatFactory from "./modules/combat/index.js";
 import { manifest as weatherManifest } from "./modules/weather/module.js";
 import weatherFactory from "./modules/weather/index.js";
+import { manifest as memoryManifest } from "./modules/memory/module.js";
+import memoryFactory from "./modules/memory/index.js";
 
 export let runtime;
 
@@ -22,6 +24,7 @@ export let runtime;
       { manifest: resourcesManifest, factory: resourcesFactory },
       { manifest: combatManifest, factory: combatFactory },
       { manifest: weatherManifest, factory: weatherFactory },
+      { manifest: memoryManifest, factory: memoryFactory },
     ]);
 
     const promptManager = new PromptManager(runtime);
