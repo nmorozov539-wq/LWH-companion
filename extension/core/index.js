@@ -8,11 +8,7 @@ import { ScenarioService } from "./scenario-service.js";
 
 export class Runtime {
   constructor() {
-    // Random ID to detect if multiple Runtime instances accidentally
-    // exist at once (e.g. a stale extension load surviving a partial
-    // reload) — visible via /lwhcurrentstate and /lwhtestupdate output.
     this._instanceId = Math.random().toString(36).slice(2, 8);
-
     this.state = new StateManager();
     this.events = new EventBus();
     this.loader = new ModuleLoader(this.state, this.events);
@@ -37,11 +33,8 @@ export class Runtime {
     }));
 
     // Persistence is NOT initialized here — the extension loads inside
-    // ST's loadExtensionSettings, before the context has extension_settings
-    // or chat_metadata available. Calling persistence.init() this early
-    // always falls through to "no adapter". syncPersistence() is called
-    // from the APP_READY handler instead, once the context is fully ready.
-
+    // ST's loadExtensionSettings before the context is fully ready.
+    // syncPersistence() is called from APP_READY instead.
     const unsubscribe = this.state.subscribe(() => {
       try {
         this.persistence.scheduleSave(this.state.getSnapshot());
@@ -65,25 +58,79 @@ export class Runtime {
     return { loadedIds, failedIds };
   }
 
-  // Called from APP_READY — by that point ST's context is fully initialized
-  // and chat_metadata / extension_settings are available. Loads any saved
-  // state for the current chat and overrides the default module state.
+  // Called from APP_READY — context is fully initialized by then.
   async syncPersistence() {
     const manifests = this._modules.map((entry) => entry.manifest).filter(Boolean);
     try {
       const restored = await this.persistence.init(this.state, manifests);
       if (restored) {
-        console.log("[Runtime] Persistence synced: saved state restored.");
+        // Sync the loader to match what persistence actually restored.
+        // boot() loaded all modules; deactivate any that weren't in the saved list.
+        const activeModules = this.persistence.getActiveModules();
+        for (const id of [...this.loader.loaded.keys()]) {
+          if (!activeModules.includes(id)) {
+            this.loader.unloadOne(id);
+            // StateManager was already updated by _applyPayload (hydrate replaced all state)
+          }
+        }
+        console.log("[Runtime] Persistence synced: restored", activeModules);
       } else {
-        // First run for this chat — save the fresh default state so future
-        // reloads have something to restore.
         await this.persistence.saveNow();
-        console.log("[Runtime] Persistence synced: no saved state, defaults written.");
+        console.log("[Runtime] Persistence synced: new chat, defaults saved.");
       }
     } catch (err) {
       console.error("[Runtime] syncPersistence failed:", err);
     }
   }
+
+  // ─── Module activation / deactivation ────────────────────────────────────
+
+  getAvailableModules() {
+    return this.loader.getRegisteredIds();
+  }
+
+  getActiveModules() {
+    return [...this.loader.loaded.keys()];
+  }
+
+  async activateModule(id) {
+    if (!this._booted) throw new Error("Runtime not booted.");
+    if (this.loader.loaded.has(id)) return; // already active
+    if (!this.loader._registry.has(id)) {
+      throw new Error(`Module "${id}" is not registered. Available: ${this.loader.getRegisteredIds().join(", ")}`);
+    }
+
+    // Restore any previously preserved state BEFORE loading so init() sees it.
+    const preserved = this.persistence.getPreservedSection(id);
+    if (preserved) {
+      // Pre-seed the namespace so init() doesn't overwrite with defaults.
+      this.state.registerNamespace(id);
+      this.state.setState(id, preserved);
+      this.persistence.clearPreservedSection(id);
+    }
+
+    this.loader.loadOne(id); // registerNamespace is a no-op if already seeded
+    await this.saveNow();
+    console.log(`[Runtime] Activated module "${id}".`);
+  }
+
+  async deactivateModule(id) {
+    if (!this._booted) throw new Error("Runtime not booted.");
+    if (!this.loader.loaded.has(id)) return; // already inactive
+
+    // Preserve current state so it survives the deactivation.
+    const currentState = this.state.getOwnState(id);
+    if (currentState) {
+      this.persistence.preserveSection(id, currentState);
+    }
+
+    this.state.clearNamespace(id);
+    this.loader.unloadOne(id);
+    await this.saveNow();
+    console.log(`[Runtime] Deactivated module "${id}" (state preserved).`);
+  }
+
+  // ─── State helpers ────────────────────────────────────────────────────────
 
   queryState(reader, target) {
     return this.state.queryState(reader, target);
@@ -107,8 +154,9 @@ export class Runtime {
     if (this.persistence.isEnabled()) {
       await this.persistence.clear();
     }
-    this.loader.loaded.clear();
-    this.loader.failed.clear();
+    for (const id of [...this.loader.loaded.keys()]) {
+      this.loader.unloadOne(id);
+    }
     this.state.hydrate({}, { emitChange: false });
     this.loader.loadAll(this._modules);
     this._baselineSnapshot = this.state.getSnapshot();
@@ -117,34 +165,45 @@ export class Runtime {
 
   teardown() {
     for (const fn of this._teardownFns.splice(0)) {
-      try {
-        fn();
-      } catch (err) {
+      try { fn(); } catch (err) {
         console.error("[Runtime] Teardown function threw:", err);
       }
     }
   }
 
+  // ─── Chat change handling ─────────────────────────────────────────────────
+
   async handleChatChanged() {
     if (!this._booted) return;
 
     if (!this.persistence.isEnabled()) {
-      if (this._baselineSnapshot) {
-        this.state.hydrate(this._baselineSnapshot, { emitChange: true });
-      }
+      this.state.hydrate(this._baselineSnapshot ?? {}, { emitChange: true });
       return;
     }
 
     try {
-      const result = await this.persistence.reload({
-        emitChange: true,
-        clearOnMismatch: true,
-      });
+      // Unload all active modules from the loader (keeps registry intact).
+      for (const id of [...this.loader.loaded.keys()]) {
+        this.loader.unloadOne(id);
+      }
 
-      if (!result.restored) {
-        this.state.hydrate({}, { emitChange: false });
-        this.loader.loaded.clear();
-        this.loader.failed.clear();
+      // reload() calls _applyPayload() which hydrates StateManager with only
+      // active module state and stashes the rest in _preservedSections.
+      const result = await this.persistence.reload({ emitChange: true });
+
+      if (result.restored) {
+        // Re-instantiate modules in the same order as their original loadAll()
+        // so that dependency order is respected.
+        const activeSet = new Set(result.activeModules);
+        for (const { manifest } of this._modules) {
+          if (activeSet.has(manifest.id)) {
+            // State is already hydrated; loadOne won't overwrite it because
+            // registerNamespace is a no-op and init() checks for existing state.
+            this.loader.loadOne(manifest.id);
+          }
+        }
+      } else {
+        // Fresh chat: load all available modules with defaults.
         this.loader.loadAll(this._modules);
         this._baselineSnapshot = this.state.getSnapshot();
         await this.saveNow();

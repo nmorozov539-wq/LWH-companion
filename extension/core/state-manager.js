@@ -14,6 +14,13 @@ export class StateManager {
     this._listeners = new Set();
   }
 
+  clearNamespace(moduleId) {
+    if (Object.prototype.hasOwnProperty.call(this._state.modules, moduleId)) {
+      delete this._state.modules[moduleId];
+      this._notifyChange();
+    }
+  }
+
   registerNamespace(moduleId) {
     if (!this._state.modules[moduleId]) {
       this._state.modules[moduleId] = {};

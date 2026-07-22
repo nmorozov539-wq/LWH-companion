@@ -30,6 +30,8 @@ export class PersistenceService {
     this._debounceHandle = null;
     this._latestSnapshot = null;
     this._restored = false;
+    this._preservedSections = {};  // inactive module state kept across reloads
+    this._activeModules = [];      // last known active module list
   }
 
   /**
@@ -116,7 +118,11 @@ export class PersistenceService {
     const payload = {
       storageVersion: STORAGE_VERSION,
       manifestVersions: { ...this._moduleVersions },
-      modules: deepClone(snapshot || {}),
+      activeModules: Object.keys(snapshot || {}),
+      sections: {
+        ...deepClone(snapshot || {}),           // active module states
+        ...deepClone(this._preservedSections),  // preserved inactive states
+      },
       savedAt: Date.now(),
     };
 
@@ -142,9 +148,9 @@ export class PersistenceService {
 
     const payload = await this._readPayload();
     if (payload && this._isPayloadCompatible(payload)) {
-      this._applyPayload(payload, { emitChange: options.emitChange !== false });
+      const activeModules = this._applyPayload(payload, { emitChange: options.emitChange !== false });
       this._restored = true;
-      return { restored: true, payloadFound: true };
+      return { restored: true, payloadFound: true, activeModules };
     }
 
     if (payload && options.clearOnMismatch) {
@@ -155,7 +161,7 @@ export class PersistenceService {
     if (options.resetStateOnEmpty === true) {
       this._stateManager.reset();
     }
-    return { restored: false, payloadFound: Boolean(payload) };
+    return { restored: false, payloadFound: Boolean(payload), activeModules: [] };
   }
 
   _isPayloadCompatible(payload) {
@@ -193,8 +199,46 @@ export class PersistenceService {
   }
 
   _applyPayload(payload, { emitChange = true } = {}) {
-    this._stateManager.hydrate(payload.modules || {}, { emitChange });
+    // Support both old format (modules key) and new format (sections + activeModules).
+    const sections = payload.sections || payload.modules || {};
+    const activeModules = payload.activeModules || Object.keys(sections);
+
+    // Split into active state (goes into StateManager) and preserved state
+    // (kept in memory but not injected into prompts).
+    const activeState = {};
+    for (const [id, data] of Object.entries(sections)) {
+      if (activeModules.includes(id)) {
+        activeState[id] = data;
+      } else {
+        // Merge into preserved — don't overwrite anything preserved this session.
+        if (!this._preservedSections[id]) {
+          this._preservedSections[id] = data;
+        }
+      }
+    }
+
+    this._activeModules = activeModules;
+    this._stateManager.hydrate(activeState, { emitChange });
     this._latestSnapshot = this._stateManager.getSnapshot();
+    return activeModules;
+  }
+
+  // --- Preserved section helpers (used by Runtime.activateModule / deactivateModule) ---
+
+  preserveSection(moduleId, data) {
+    this._preservedSections[moduleId] = deepClone(data);
+  }
+
+  getPreservedSection(moduleId) {
+    return this._preservedSections[moduleId] ?? null;
+  }
+
+  clearPreservedSection(moduleId) {
+    delete this._preservedSections[moduleId];
+  }
+
+  getActiveModules() {
+    return [...this._activeModules];
   }
 
   _resolveAdapter() {

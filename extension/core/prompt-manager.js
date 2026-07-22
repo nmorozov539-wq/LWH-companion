@@ -106,6 +106,57 @@ export class PromptManager {
       helpString: "Open the state editor: edit all tracked module values as JSON.",
     });
 
+    registerCommand({
+      name: "lwh_modules",
+      callback: async () => {
+        const available = this.runtime.getAvailableModules();
+        const active = new Set(this.runtime.getActiveModules());
+        const lines = available.map((id) => `${active.has(id) ? "✓" : "○"} ${id}`);
+        await this._callGenericPopup(
+          "<h3>LWH — Modules</h3><pre style='text-align:left;'>" + lines.join("\n") + "</pre>",
+          this._POPUP_TYPE.TEXT
+        );
+        return "";
+      },
+      helpString: "List all registered modules and which are active for this chat.",
+    });
+
+    registerCommand({
+      name: "lwh_activate",
+      callback: async (namedArgs, value) => {
+        const id = value?.trim();
+        if (!id) return "Usage: /lwh_activate <moduleId>";
+        try {
+          await this.runtime.activateModule(id);
+          this.refresh();
+          toastr.success(`Module "${id}" activated.`, "LWH Companion");
+          return `Module "${id}" activated.`;
+        } catch (err) {
+          toastr.error(err.message, "LWH Companion");
+          return `Failed: ${err.message}`;
+        }
+      },
+      helpString: "Activate a module for the current chat: /lwh_activate <moduleId>",
+    });
+
+    registerCommand({
+      name: "lwh_deactivate",
+      callback: async (namedArgs, value) => {
+        const id = value?.trim();
+        if (!id) return "Usage: /lwh_deactivate <moduleId>";
+        try {
+          await this.runtime.deactivateModule(id);
+          this.refresh();
+          toastr.success(`Module "${id}" deactivated (state preserved).`, "LWH Companion");
+          return `Module "${id}" deactivated.`;
+        } catch (err) {
+          toastr.error(err.message, "LWH Companion");
+          return `Failed: ${err.message}`;
+        }
+      },
+      helpString: "Deactivate a module for this chat, state is preserved: /lwh_deactivate <moduleId>",
+    });
+
     console.log("[PromptManager] Initialized, waiting for APP_READY.");
   }
 
