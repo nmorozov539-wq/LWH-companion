@@ -33,12 +33,16 @@ export class PromptManager {
       setExtensionPrompt,
       callGenericPopup,
       POPUP_TYPE,
+      POPUP_RESULT,
+      Popup,
       requestAPICall,
     } = SillyTavern.getContext();
 
     this._setExtensionPrompt = setExtensionPrompt;
     this._callGenericPopup = callGenericPopup;
     this._POPUP_TYPE = POPUP_TYPE;
+    this._POPUP_RESULT = POPUP_RESULT;
+    this._Popup = Popup;
 
     eventSource.on(event_types.APP_READY, () => {
       this._inject();
@@ -75,17 +79,31 @@ export class PromptManager {
       helpString: "Clear LWH Companion's persisted memory for the current chat.",
     });
 
+    const scenarioContext = () => ({
+      popup: this._callGenericPopup,
+      popupType: this._POPUP_TYPE,
+      Popup: this._Popup,
+      POPUP_RESULT: this._POPUP_RESULT,
+      requestAPICall,
+      refresh: () => this.refresh(),
+    });
+
     registerCommand({
       name: "lwhscenarios",
       callback: async (namedArgs, value) => {
-        const output = await this.runtime.scenarios.handleCommand(value || "", {
-          popup: this._callGenericPopup,
-          popupType: this._POPUP_TYPE,
-          requestAPICall,
-        });
+        const output = await this.runtime.scenarios.handleCommand(value || "", scenarioContext());
         return output || "";
       },
-      helpString: "Scenario manager: list, apply templates, edit, or AI-generate starting state.",
+      helpString: "Scenario manager: /lwhscenarios list | apply <id> | reset",
+    });
+
+    registerCommand({
+      name: "lwhscenarios_edit",
+      callback: async () => {
+        const output = await this.runtime.scenarios.handleCommand("edit", scenarioContext());
+        return output || "";
+      },
+      helpString: "Open the state editor: edit all tracked module values as JSON.",
     });
 
     console.log("[PromptManager] Initialized, waiting for APP_READY.");

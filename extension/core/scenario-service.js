@@ -94,36 +94,59 @@ export class ScenarioService {
     }
   }
 
-  async _cmdEdit({ popup, popupType }) {
-    if (typeof popup !== "function") {
-      return "This SillyTavern build does not support popups for editing.";
-    }
-
+  async _cmdEdit({ Popup, POPUP_RESULT, popupType, popup, refresh }) {
+    // Build the editable payload: only the .data part of each module so the
+    // user sees clean field values, not version metadata. Future modules
+    // appear here automatically because we pull from getContract().
     const contract = this.runtime.getContract();
-    const json = JSON.stringify(contract.sections || {}, null, 2);
-    const prompt = `<h3>LWH Companion — manual state edit</h3>
-<p>Edit the JSON for the sections object. Leave blank to cancel.</p>
-<textarea id="lwh-edit" style="width:100%;height:300px;">${json}</textarea>`;
-
-    const result = await popup(prompt, popupType.TEXT_INPUT, {
-      inputId: "lwh-edit",
-      confirmText: "Apply",
-      cancelText: "Cancel",
-    });
-
-    if (!result || !result.value) {
-      return "Manual edit cancelled.";
+    const editable = {};
+    for (const [moduleId, section] of Object.entries(contract.sections || {})) {
+      editable[moduleId] = section.data ?? section;
     }
+    const json = JSON.stringify(editable, null, 2);
+
+    // Use the Popup class directly for reliable multiline textarea support.
+    // Falls back to callGenericPopup + CONFIRM + DOM read if Popup is absent.
+    let value;
+    if (Popup && POPUP_RESULT) {
+      const dlg = new Popup(
+        "<h3 style='margin:0 0 6px;'>LWH — Edit State</h3>" +
+        "<p style='margin:0 0 8px;font-size:.85em;color:#aaa;'>" +
+        "Edit module values. Future modules appear here automatically.</p>",
+        popupType.TEXT_INPUT,
+        json,
+        { rows: 14, wide: true }
+      );
+      const result = await dlg.show();
+      if (result !== POPUP_RESULT.AFFIRMATIVE) return "Edit cancelled.";
+      value = dlg.value?.trim();
+    } else if (typeof popup === "function") {
+      // Fallback: CONFIRM popup with embedded textarea.
+      const id = "lwh-edit-" + Date.now();
+      const confirmed = await popup(
+        "<h3>LWH — Edit State</h3>" +
+        `<textarea id="${id}" style="width:100%;height:280px;font-family:monospace;font-size:12px;resize:vertical;" spellcheck="false">${json}</textarea>`,
+        popupType.CONFIRM
+      );
+      if (!confirmed) return "Edit cancelled.";
+      value = document.getElementById(id)?.value?.trim();
+    } else {
+      return "Popup API not available in this ST build.";
+    }
+
+    if (!value) return "Edit cancelled (empty).";
 
     try {
-      const parsed = JSON.parse(result.value);
+      const parsed = JSON.parse(value);
       this._applySectionsPayload(parsed);
-      toastr.success("State updated from manual edit.", "LWH Companion");
-      return "Manual edit applied.";
+      await this.runtime.saveNow();
+      refresh?.();
+      toastr.success("State updated.", "LWH Companion");
+      return "State updated.";
     } catch (err) {
-      console.error("[ScenarioService] Manual edit invalid JSON:", err);
+      console.error("[ScenarioService] Edit parse error:", err);
       toastr.error(err.message, "LWH Companion");
-      return "Failed to parse JSON.";
+      return `Invalid JSON: ${err.message}`;
     }
   }
 
