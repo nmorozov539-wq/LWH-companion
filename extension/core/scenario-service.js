@@ -94,46 +94,46 @@ export class ScenarioService {
     }
   }
 
-  async _cmdEdit({ Popup, POPUP_RESULT, popupType, popup, refresh }) {
-    // Build the editable payload: only the .data part of each module so the
-    // user sees clean field values, not version metadata. Future modules
-    // appear here automatically because we pull from getContract().
+  async _cmdEdit({ popupType, popup, refresh }) {
+    if (typeof popup !== "function") {
+      return "Popup API not available in this ST build.";
+    }
+
+    // Build editable payload: only .data of each module, no version metadata.
+    // Future modules appear automatically via getContract().
     const contract = this.runtime.getContract();
     const editable = {};
     for (const [moduleId, section] of Object.entries(contract.sections || {})) {
       editable[moduleId] = section.data ?? section;
     }
     const json = JSON.stringify(editable, null, 2);
+    const textareaId = "lwh-edit-" + Date.now();
 
-    // Use the Popup class directly for reliable multiline textarea support.
-    // Falls back to callGenericPopup + CONFIRM + DOM read if Popup is absent.
-    let value;
-    if (Popup && POPUP_RESULT) {
-      const dlg = new Popup(
-        "<h3 style='margin:0 0 6px;'>LWH — Edit State</h3>" +
-        "<p style='margin:0 0 8px;font-size:.85em;color:#aaa;'>" +
-        "Edit module values. Future modules appear here automatically.</p>",
-        popupType.TEXT_INPUT,
-        json,
-        { rows: 14, wide: true }
-      );
-      const result = await dlg.show();
-      if (result !== POPUP_RESULT.AFFIRMATIVE) return "Edit cancelled.";
-      value = dlg.value?.trim();
-    } else if (typeof popup === "function") {
-      // Fallback: CONFIRM popup with embedded textarea.
-      const id = "lwh-edit-" + Date.now();
-      const confirmed = await popup(
-        "<h3>LWH — Edit State</h3>" +
-        `<textarea id="${id}" style="width:100%;height:280px;font-family:monospace;font-size:12px;resize:vertical;" spellcheck="false">${json}</textarea>`,
+    // Capture textarea value via event delegation so we have it even if the
+    // popup removes the element from the DOM before we can read it.
+    let liveValue = json;
+    const onInput = (e) => {
+      if (e.target.id === textareaId) liveValue = e.target.value;
+    };
+    document.addEventListener("input", onInput);
+
+    let confirmed;
+    try {
+      confirmed = await popup(
+        "<h3 style='margin:0 0 8px;'>LWH — Edit State</h3>" +
+        "<p style='margin:0 0 8px;font-size:.85em;color:#aaa;'>Edit module values. Future modules appear here automatically.</p>" +
+        `<textarea id="${textareaId}" style="width:100%;height:300px;font-family:monospace;font-size:12px;resize:vertical;" spellcheck="false">${json}</textarea>`,
         popupType.CONFIRM
       );
-      if (!confirmed) return "Edit cancelled.";
-      value = document.getElementById(id)?.value?.trim();
-    } else {
-      return "Popup API not available in this ST build.";
+    } finally {
+      document.removeEventListener("input", onInput);
     }
 
+    if (!confirmed) return "Edit cancelled.";
+
+    // Prefer live DOM value (still there in most ST versions), fall back to
+    // the event-captured value if the element was already removed.
+    const value = (document.getElementById(textareaId)?.value ?? liveValue).trim();
     if (!value) return "Edit cancelled (empty).";
 
     try {
