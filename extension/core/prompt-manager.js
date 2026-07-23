@@ -107,6 +107,32 @@ export class PromptManager {
     });
 
     registerCommand({
+      name: "lwh_memory",
+      callback: async () => {
+        const active = this.runtime.getActiveModules();
+        if (!active.includes("memory")) {
+          toastr.warning("Memory module is not active. Run /lwh_activate memory first.", "LWH Companion");
+          return "";
+        }
+        const facts = this.runtime.state.getOwnState("memory") ?? {};
+        const entries = Object.entries(facts);
+        const body = entries.length === 0
+          ? "<em style='color:#888;'>No facts recorded yet.</em>"
+          : entries.map(([k, v]) =>
+              `<tr><td style='padding:2px 12px 2px 0;color:#aaa;vertical-align:top;'>${k}</td>` +
+              `<td style='padding:2px 0;'>${v}</td></tr>`
+            ).join("");
+        const html = "<h3 style='margin:0 0 10px;'>LWH — Memory Facts</h3>" +
+          (entries.length
+            ? `<table style='width:100%;font-family:monospace;font-size:13px;'>${body}</table>`
+            : body);
+        await this._callGenericPopup(html, this._POPUP_TYPE.TEXT);
+        return "";
+      },
+      helpString: "Show all facts currently stored in the memory module.",
+    });
+
+    registerCommand({
       name: "lwh_modules",
       callback: async () => {
         const available = this.runtime.getAvailableModules();
