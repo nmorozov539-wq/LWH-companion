@@ -20,13 +20,21 @@ export default function memoryFactory(runtime) {
         runtime.state.setState("memory", {});
       }
 
-      // Stub: detect whether an external summarizer is active.
-      // Logged once at init so it's visible in the console during development.
+      // Compatibility check: LWH memory and external summarizers cannot run
+      // together without causing drift — they produce parallel, unsynchronized
+      // memory channels that will eventually contradict each other.
+      // Design decision: users must choose one or the other.
       const external = _detectExternalSummarizer();
       if (external) {
-        console.log("[Memory] External summarizer detected — summary processor will defer to it.");
-      } else {
-        console.log("[Memory] No external summarizer detected — summary processor will own compression when enabled.");
+        console.warn("[Memory] External summarizer detected. LWH Memory is incompatible with external summarizers — they will produce conflicting state over time. Deactivate one.");
+        if (typeof toastr !== "undefined") {
+          toastr.warning(
+            "LWH Memory is active but an external summarizer was also detected. " +
+            "These are incompatible — run /lwh_deactivate memory or disable your summarizer extension.",
+            "LWH Companion — Conflict",
+            { timeOut: 10000 }
+          );
+        }
       }
     },
 
